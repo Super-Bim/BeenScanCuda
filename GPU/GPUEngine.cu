@@ -152,6 +152,9 @@ int _ConvertSMVer2Cores(int major, int minor) {
       {0x75,  64},
       {0x80,  64},
       {0x86, 128},
+      {0x87, 128},
+      {0x89, 128}, // Ada Lovelace
+      {0x90, 128}, // Hopper
       {-1, -1} };
 
   int index = 0;
