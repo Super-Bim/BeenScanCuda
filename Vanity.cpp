@@ -76,9 +76,17 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
     this->rangeWidth.Sub(&this->rangeStart);
     this->keysPerCore = (keysPerCore > 0) ? keysPerCore : STEP_SIZE;
     printf("Range search enabled: [0x%s -> 0x%s]\n", this->rangeStart.GetBase16().c_str(), this->rangeEnd.GetBase16().c_str());
+#ifdef WIN64
     printf("Keys per core: %llu\n", this->keysPerCore);
+#else
+    printf("Keys per core: %lu\n", (unsigned long)this->keysPerCore);
+#endif
   } else {
     this->keysPerCore = 0;
+    // Inicialização segura mesmo quando range não é usado
+    this->rangeStart.SetInt32(0);
+    this->rangeEnd.SetInt32(0); 
+    this->rangeWidth.SetInt32(0);
   }
 
   lastRekey = 0;
@@ -1290,7 +1298,7 @@ void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
 
   if (rekey > 0) {
     key.Rand(256);
-  } else if (useRangeSearch) {
+  } else if (useRangeSearch && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
     // Usar range de busca definido pelo usuário
     key = getRangeKey();
     
@@ -1524,7 +1532,7 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
   for (int i = 0; i < nbThread; i++) {
     if (rekey > 0) {
       keys[i].Rand(256);
-    } else if (useRangeSearch) {
+    } else if (useRangeSearch && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
       // Usar range de busca definido pelo usuário
       keys[i] = getRangeKey();
       
@@ -1541,7 +1549,8 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
         if (keys[i].IsGreater(&rangeEnd)) {
           keys[i].Set(&rangeStart);  // Volta ao início do range
           offset.Set(&threadOffset);
-          offset.Mod(&rangeWidth);  // Garante que não vai ultrapassar novamente
+          if (!rangeWidth.IsZero())
+            offset.Mod(&rangeWidth);  // Garante que não vai ultrapassar novamente
           keys[i].Add(&offset);
         }
       }
@@ -1631,7 +1640,7 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
         keys[i].Add((uint64_t)STEP_SIZE);
         
         // Se estiver usando range search com limite de chaves por core, verifica se atingiu o limite
-        if (useRangeSearch && keysPerCore > 0) {
+        if (useRangeSearch && keysPerCore > 0 && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
           keysProcessed[i] += STEP_SIZE;
           
           // Se atingiu o limite de chaves, reinicia com uma nova chave aleatória dentro do range
@@ -1650,7 +1659,7 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       }
       
       // Redefine as chaves na GPU se alguma thread precisou reiniciar
-      if (useRangeSearch && keysPerCore > 0) {
+      if (useRangeSearch && keysPerCore > 0 && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
         bool needReset = false;
         for (int i = 0; i < nbThread; i++) {
           if (keysProcessed[i] == 0) {
@@ -1893,7 +1902,7 @@ Int VanitySearch::getRangeKey() {
   // Gera uma chave aleatória dentro do range [rangeStart, rangeEnd]
   Int key;
   
-  if (!useRangeSearch) {
+  if (!useRangeSearch || &rangeStart == NULL || &rangeEnd == NULL) {
     // Se o range não estiver definido, gera uma chave aleatória completa (256 bits)
     key.Rand(256);
     return key;
@@ -1903,7 +1912,8 @@ Int VanitySearch::getRangeKey() {
   Int offset;
   offset.Rand(256);
   // Garante que o offset está dentro do range (mod rangeWidth)
-  offset.Mod(&rangeWidth);
+  if (!rangeWidth.IsZero())
+    offset.Mod(&rangeWidth);
   
   // Calcula a chave: rangeStart + offset
   key.Set(&rangeStart);

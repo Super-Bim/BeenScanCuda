@@ -424,6 +424,11 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[a], "-range") == 0) {
       // Processa o parâmetro range - formato: -range start,end (em hex)
       a++;
+      if (a >= argc) {
+        printf("Error: -range requires an argument\n");
+        exit(-1);
+      }
+      
       vector<string> rangeValues;
       string rangeStr = string(argv[a]);
       size_t pos = 0;
@@ -445,6 +450,13 @@ int main(int argc, char* argv[]) {
       // Converte os valores para Int
       rangeStart = new Int();
       rangeEnd = new Int();
+      
+      // Verifica se a alocação foi bem-sucedida
+      if (!rangeStart || !rangeEnd) {
+        printf("Error: Failed to allocate memory for range\n");
+        exit(-1);
+      }
+      
 #ifdef WIN64
       char* startStr = _strdup(rangeValues[0].c_str());
       char* endStr = _strdup(rangeValues[1].c_str());
@@ -452,6 +464,13 @@ int main(int argc, char* argv[]) {
       char* startStr = strdup(rangeValues[0].c_str());
       char* endStr = strdup(rangeValues[1].c_str());
 #endif
+
+      // Verifica se a duplicação de string foi bem-sucedida
+      if (!startStr || !endStr) {
+        printf("Error: Failed to allocate memory for range strings\n");
+        exit(-1);
+      }
+      
       rangeStart->SetBase16(startStr);
       rangeEnd->SetBase16(endStr);
       free(startStr);
@@ -467,7 +486,21 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[a], "-keys") == 0) {
       // Processa o parâmetro keys
       a++;
-      keysPerCore = strtoull(argv[a], NULL, 10);
+      if (a >= argc) {
+        printf("Error: -keys requires an argument\n");
+        exit(-1);
+      }
+      
+      // Tratamento seguro para conversão de string para uint64_t
+      char* endPtr;
+      keysPerCore = strtoull(argv[a], &endPtr, 10);
+      
+      // Verifica se a conversão foi bem-sucedida
+      if (*endPtr != '\0' || endPtr == argv[a]) {
+        printf("Invalid keys value: not a number\n");
+        exit(-1);
+      }
+      
       if (keysPerCore == 0) {
         printf("Invalid keys value: must be greater than 0\n");
         exit(-1);

@@ -86,6 +86,10 @@ public:
                bool caseSensitive, Point &startPubKey, bool paranoiacSeed, 
                Int *rangeStart = NULL, Int *rangeEnd = NULL, uint64_t keysPerCore = 0);
 
+  ~VanitySearch() {
+    // Adicionar cleanup seguro se necessário
+  }
+
   void Search(int nbThread, std::vector<int> gpuId, std::vector<int> gridSize);
   void FindKeyCPU(TH_PARAM *p);
   void FindKeyGPU(TH_PARAM *p);
