@@ -20,7 +20,13 @@
 
 #include <time.h>
 #include <string>
+
+#ifdef WIN32
 #include <windows.h>
+#else
+#include <sys/time.h>
+#include <unistd.h>
+#endif
 
 class Timer {
 
@@ -34,9 +40,14 @@ public:
   static uint32_t getSeed32();
   static void SleepMillis(uint32_t millis);
 
+#ifdef WIN32
   static LARGE_INTEGER perfTickStart;
   static double perfTicksPerSec;
   static LARGE_INTEGER qwTicksPerSec;
+#else
+  static struct timespec startTime;
+  static double startTick;
+#endif
 };
 
 #endif // TIMERH

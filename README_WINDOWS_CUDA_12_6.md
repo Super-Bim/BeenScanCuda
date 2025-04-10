@@ -1,18 +1,18 @@
-# VanitySearch para Windows com CUDA 12.6
+# VanitySearch para Windows com CUDA 12.6+
 
-Este é um fork do projeto VanitySearch atualizado para usar CUDA 12.6 e otimizado para Windows.
+Este é um fork do projeto VanitySearch atualizado para usar CUDA 12.6 ou superior e otimizado para Windows.
 
 ## Pré-requisitos
 
 - Windows 10 ou superior
 - Visual Studio 2022 (Community Edition ou superior)
-- CUDA Toolkit 12.6
-- GPU compatível com CUDA 12.6
+- CUDA Toolkit 12.6 ou superior (compatível com 12.8 e versões futuras)
+- GPU compatível com CUDA 12.6+
 
 ## Instalação
 
 1. Instale o [Visual Studio 2022](https://visualstudio.microsoft.com/pt-br/downloads/)
-2. Instale o [CUDA Toolkit 12.6](https://developer.nvidia.com/cuda-downloads)
+2. Instale o [CUDA Toolkit](https://developer.nvidia.com/cuda-downloads) (versão 12.6 ou superior)
 3. Clone ou baixe este repositório
 
 ## Compilação
@@ -92,7 +92,7 @@ A busca em range específico geralmente é muito mais rápida do que uma busca c
 
 ## Mudanças em relação à versão original
 
-- Atualizado para usar CUDA 12.6
+- Atualizado para usar CUDA 12.6 ou superior (compatível com 12.8 e versões futuras)
 - Adaptado para compilar nativamente no Windows
 - Removido código específico para Linux
 - Atualizada a arquitetura de GPU alvo para modelos mais recentes
@@ -107,5 +107,5 @@ O desempenho varia de acordo com a GPU e CPU utilizadas:
 
 ## Problemas Conhecidos
 
-- O programa requer uma GPU compatível com CUDA 12.6
+- O programa requer uma GPU compatível com CUDA 12.6 ou superior
 - Pode ser necessário ajustar as opções de compilação para GPUs mais antigas 

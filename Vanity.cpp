@@ -27,16 +27,22 @@
 #include <string.h>
 #include <math.h>
 #include <algorithm>
-#include <iostream>
-#include <cassert>
 #ifndef WIN64
 #include <pthread.h>
+#include <unistd.h>
+#include <sys/syscall.h>
 #endif
 
 using namespace std;
 
 Point Gn[CPU_GRP_SIZE / 2];
 Point _2Gn;
+
+#ifdef WIN64
+HANDLE ghMutex;
+#else
+pthread_mutex_t ghMutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 // ----------------------------------------------------------------------------
 
@@ -198,7 +204,7 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
     }
 
     if (nbPrefix == 0) {
-      printf("BeenScanCuda: nothing to search !\n");
+      printf("VanitySearch: nothing to search !\n");
       exit(1);
     }
 
@@ -1757,9 +1763,14 @@ void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
     params[i].threadId = i;
     params[i].isRunning = true;
 
+#ifdef WIN64
     DWORD thread_id;
     CreateThread(NULL, 0, _FindKey, (void*)(params+i), 0, &thread_id);
     ghMutex = CreateMutex(NULL, FALSE, NULL);
+#else
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, &_FindKey, (void*)(params+i));
+#endif
   }
 
   // Launch GPU threads
@@ -1770,8 +1781,13 @@ void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
     params[nbCPUThread+i].gpuId = gpuId[i];
     params[nbCPUThread+i].gridSizeX = gridSize[2*i];
     params[nbCPUThread+i].gridSizeY = gridSize[2*i+1];
+#ifdef WIN64
     DWORD thread_id;
     CreateThread(NULL, 0, _FindKeyGPU, (void*)(params+(nbCPUThread+i)), 0, &thread_id);
+#else
+    pthread_t thread_id;
+    pthread_create(&thread_id, NULL, &_FindKeyGPU, (void*)(params+(nbCPUThread+i)));
+#endif
   }
 
   uint64_t lastCount = 0;

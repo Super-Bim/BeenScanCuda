@@ -31,8 +31,32 @@ OBJET = $(addprefix $(OBJDIR)/, \
 endif
 
 CXX        = g++
-CUDA       = /usr/local/cuda-8.0
-CXXCUDA    = /usr/bin/g++-4.8
+
+# Detectar versão do CUDA, usar as mais recentes se disponíveis
+CUDA_PATH   ?= /usr/local/cuda
+ifneq ($(wildcard /usr/local/cuda-12.8),)
+CUDA       = /usr/local/cuda-12.8
+else ifneq ($(wildcard /usr/local/cuda-12.6),)
+CUDA       = /usr/local/cuda-12.6
+else ifneq ($(wildcard /usr/local/cuda-12.0),)
+CUDA       = /usr/local/cuda-12.0
+else ifneq ($(wildcard /usr/local/cuda-11.8),)
+CUDA       = /usr/local/cuda-11.8
+else ifneq ($(wildcard /usr/local/cuda-11.0),)
+CUDA       = /usr/local/cuda-11.0
+else
+CUDA       = /usr/local/cuda
+endif
+
+# Verificar compilador compatível com o CUDA
+CUDA_GCC_VER = $(shell $(CUDA)/bin/nvcc -V | grep release | sed 's/.*release //' | sed 's/,.*//')
+GCC_VER_MAJOR = $(shell g++ -dumpversion | cut -d'.' -f1)
+ifeq ($(shell expr $(GCC_VER_MAJOR) \> 10), 1)
+CXXCUDA     = g++-10
+else
+CXXCUDA     = g++
+endif
+
 NVCC       = $(CUDA)/bin/nvcc
 # nvcc requires joint notation w/o dot, i.e. "5.2" -> "52"
 ccap       = $(shell echo $(CCAP) | tr -d '.')

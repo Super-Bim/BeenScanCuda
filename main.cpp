@@ -445,8 +445,13 @@ int main(int argc, char* argv[]) {
       // Converte os valores para Int
       rangeStart = new Int();
       rangeEnd = new Int();
+#ifdef WIN64
       char* startStr = _strdup(rangeValues[0].c_str());
       char* endStr = _strdup(rangeValues[1].c_str());
+#else
+      char* startStr = strdup(rangeValues[0].c_str());
+      char* endStr = strdup(rangeValues[1].c_str());
+#endif
       rangeStart->SetBase16(startStr);
       rangeEnd->SetBase16(endStr);
       free(startStr);

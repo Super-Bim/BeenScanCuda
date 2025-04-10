@@ -22,9 +22,13 @@
 #include <vector>
 #include "SECP256k1.h"
 #include "GPU/GPUEngine.h"
+
+#ifdef WIN64
 #include <Windows.h>
+#endif
 
 #define CPU_GRP_SIZE 1024
+#define STEP_SIZE 1024
 
 class VanitySearch;
 

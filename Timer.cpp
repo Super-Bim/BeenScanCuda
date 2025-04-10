@@ -16,33 +16,53 @@
 */
 
 #include "Timer.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 static const char *prefix[] = { "","Kilo","Mega","Giga","Tera","Peta","Hexa" };
 
+#ifdef WIN32
 LARGE_INTEGER Timer::perfTickStart;
 double Timer::perfTicksPerSec;
 LARGE_INTEGER Timer::qwTicksPerSec;
 #include <wincrypt.h>
+#else
+struct timespec Timer::startTime;
+double Timer::startTick;
+#include <fcntl.h>
+#endif
 
 void Timer::Init() {
+#ifdef WIN32
   QueryPerformanceFrequency(&qwTicksPerSec);
   QueryPerformanceCounter(&perfTickStart);
   perfTicksPerSec = (double)qwTicksPerSec.QuadPart;
+#else
+  clock_gettime(CLOCK_MONOTONIC, &startTime);
+  startTick = 0;
+#endif
 }
 
 double Timer::get_tick() {
+#ifdef WIN32
   LARGE_INTEGER t, dt;
   QueryPerformanceCounter(&t);
   dt.QuadPart = t.QuadPart - perfTickStart.QuadPart;
   return (double)(dt.QuadPart) / perfTicksPerSec;
+#else
+  struct timespec currentTime;
+  clock_gettime(CLOCK_MONOTONIC, &currentTime);
+  return (double)(currentTime.tv_sec - startTime.tv_sec) + 
+         (double)(currentTime.tv_nsec - startTime.tv_nsec) / 1e9;
+#endif
 }
 
 std::string Timer::getSeed(int size) {
-
   std::string ret;
   char tmp[3];
   unsigned char *buff = (unsigned char *)malloc(size);
 
+#ifdef WIN32
   HCRYPTPROV   hCryptProv = NULL;
   LPCSTR UserName = "KeyContainer";
 
@@ -80,6 +100,20 @@ std::string Timer::getSeed(int size) {
   }
 
   CryptReleaseContext(hCryptProv, 0);
+#else
+  int f = open("/dev/urandom", O_RDONLY);
+  if (f < 0) {
+    printf("Failed to open /dev/urandom\n");
+    exit(1);
+  }
+  
+  if (read(f, buff, size) != size) {
+    printf("Failed to read from /dev/urandom\n");
+    exit(1);
+  }
+  
+  close(f);
+#endif
 
   for (int i = 0; i < size; i++) {
     sprintf(tmp,"%02X",buff[i]);
@@ -88,7 +122,6 @@ std::string Timer::getSeed(int size) {
 
   free(buff);
   return ret;
-
 }
 
 uint32_t Timer::getSeed32() {
@@ -116,11 +149,20 @@ void Timer::printResult(char *unit, int nbTry, double t0, double t1) {
 }
 
 int Timer::getCoreNumber() {
+#ifdef WIN32
   SYSTEM_INFO sysinfo;
   GetSystemInfo(&sysinfo);
   return sysinfo.dwNumberOfProcessors;
+#else
+  int numCPU = sysconf(_SC_NPROCESSORS_ONLN);
+  return numCPU;
+#endif
 }
 
 void Timer::SleepMillis(uint32_t millis) {
+#ifdef WIN32
   Sleep(millis);
+#else
+  usleep(millis * 1000);
+#endif
 }
