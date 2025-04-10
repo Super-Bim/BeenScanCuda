@@ -1,26 +1,26 @@
-# VanitySearch para Linux com CUDA 12.6
+# VanitySearch para Linux com CUDA 12.8
 
-Este é um fork do projeto VanitySearch atualizado para usar CUDA 12.6 no sistema Linux.
+Este é um fork do projeto VanitySearch atualizado para usar CUDA 12.8 no sistema Linux.
 
 ## Pré-requisitos
 
 - Linux (Ubuntu/Debian recomendado)
 - GCC/G++ (versão 9 ou superior)
-- CUDA Toolkit 12.6
-- GPU compatível com CUDA 12.6
+- CUDA Toolkit 12.8
+- GPU compatível com CUDA 12.8
 
 ## Instalação
 
-1. Instale o CUDA Toolkit 12.6:
+1. Instale o CUDA Toolkit 12.8:
    ```
-   wget https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda_12.6.0_535.104.05_linux.run
-   sudo sh cuda_12.6.0_535.104.05_linux.run
+   wget https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_545.23.08_linux.run
+   sudo sh cuda_12.8.0_545.23.08_linux.run
    ```
 
 2. Atualize o PATH e LD_LIBRARY_PATH no seu .bashrc:
    ```
-   export PATH=/usr/local/cuda-12.6/bin${PATH:+:${PATH}}
-   export LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
+   export PATH=/usr/local/cuda-12.8/bin${PATH:+:${PATH}}
+   export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}
    ```
 
 3. Clone ou baixe este repositório:
@@ -58,7 +58,7 @@ Se preferir compilar manualmente:
 
 1. Certifique-se de que o caminho do CUDA está correto no Makefile_Linux:
    ```
-   CUDA = /usr/local/cuda-12.6
+   CUDA = /usr/local/cuda-12.8
    ```
 
 2. Compile com suporte a GPU:
@@ -146,7 +146,7 @@ A busca em range específico geralmente é muito mais rápida do que uma busca c
 
 1. Se você encontrar erros relacionados a bibliotecas CUDA não encontradas, verifique se a variável LD_LIBRARY_PATH está corretamente configurada:
    ```
-   export LD_LIBRARY_PATH=/usr/local/cuda-12.6/lib64:$LD_LIBRARY_PATH
+   export LD_LIBRARY_PATH=/usr/local/cuda-12.8/lib64:$LD_LIBRARY_PATH
    ```
 
 2. Para verificar se o CUDA está instalado corretamente:
@@ -158,9 +158,10 @@ A busca em range específico geralmente é muito mais rápida do que uma busca c
 
 ## Mudanças em relação à versão original
 
-- Atualizado para usar CUDA 12.6
+- Atualizado para usar CUDA 12.8
 - Adicionada funcionalidade de busca em range específico de chaves privadas
 - Atualizado para computadores com arquiteturas de GPU modernas
+- Suporte para Compute Capability mais recentes, incluindo Ada Lovelace (RTX 40 series)
 
 ## Desempenho
 

@@ -1,14 +1,14 @@
 #!/bin/bash
 
-echo "Script de compilação para VanitySearch com CUDA 12.6 no Linux"
+echo "Script de compilação para VanitySearch com CUDA 12.8 no Linux"
 echo "============================================================="
 
 # Verificar se CUDA está instalado
 if ! command -v nvcc &> /dev/null; then
-    echo "ERRO: NVCC não encontrado. O CUDA Toolkit 12.6 está instalado?"
-    echo "Para instalar o CUDA 12.6, execute:"
-    echo "wget https://developer.download.nvidia.com/compute/cuda/12.6.0/local_installers/cuda_12.6.0_535.104.05_linux.run"
-    echo "sudo sh cuda_12.6.0_535.104.05_linux.run"
+    echo "ERRO: NVCC não encontrado. O CUDA Toolkit 12.8 está instalado?"
+    echo "Para instalar o CUDA 12.8, execute:"
+    echo "wget https://developer.download.nvidia.com/compute/cuda/12.8.0/local_installers/cuda_12.8.0_545.23.08_linux.run"
+    echo "sudo sh cuda_12.8.0_545.23.08_linux.run"
     exit 1
 fi
 
