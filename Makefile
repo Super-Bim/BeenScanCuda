@@ -111,11 +111,16 @@ endif
 $(OBJDIR)/%.o : %.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
+# Definir all como alvo padrão no topo
+.PHONY: all clean
+
 all: VanitySearch
 
 VanitySearch: $(OBJET)
-	@echo Making VanitySearch...
+	@echo "Making VanitySearch..."
 	$(CXX) $(OBJET) $(LFLAGS) -o VanitySearch
+	@echo "VanitySearch compiled successfully."
+	@if [ -f VanitySearch ]; then chmod +x VanitySearch; fi
 
 $(OBJET): | $(OBJDIR) $(OBJDIR)/GPU $(OBJDIR)/hash
 
