@@ -618,7 +618,11 @@ int main(int argc, char* argv[]) {
   // Se um range foi especificado mas o número de chaves por core não foi, defina um valor padrão
   if (rangeStart != NULL && rangeEnd != NULL && keysPerCore == 0) {
     keysPerCore = STEP_SIZE;
+#ifdef WIN64
     printf("Keys per core not specified, using default: %llu\n", keysPerCore);
+#else
+    printf("Keys per core not specified, using default: %lu\n", (unsigned long)keysPerCore);
+#endif
   }
 
   // If a starting public key is specified, force the search mode according to the key

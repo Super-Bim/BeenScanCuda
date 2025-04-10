@@ -24,8 +24,11 @@
 #ifdef WIN32
 #include <windows.h>
 #else
+/* Para Linux */
+#ifdef __linux__
 #include <sys/time.h>
 #include <unistd.h>
+#endif
 #endif
 
 class Timer {

@@ -32,6 +32,15 @@
 
 class VanitySearch;
 
+// Declaração de funções para threads
+#ifdef WIN64
+DWORD WINAPI _FindKey(LPVOID lpParam);
+DWORD WINAPI _FindKeyGPU(LPVOID lpParam);
+#else
+void *_FindKey(void *lpParam);
+void *_FindKeyGPU(void *lpParam);
+#endif
+
 typedef struct {
 
   VanitySearch *obj;
@@ -151,7 +160,9 @@ private:
   Int rangeWidth;
   uint64_t keysPerCore;
 
+#ifdef WIN64
   HANDLE ghMutex;
+#endif
 
 };
 
