@@ -54,23 +54,44 @@ fi
 
 # Verificar versão do GCC
 GCC_VERSION=$(gcc -dumpversion | cut -d. -f1)
-GXX_CUDA=""
 
-if [ $GCC_VERSION -gt 10 ]; then
-    if command -v g++-10 &> /dev/null; then
+# Detectar versão do CUDA para determinar compatibilidade com GCC 11
+CUDA_VERSION_MAJOR=$(echo $CUDA_PATH | grep -oP "cuda-\K[0-9]+" || echo 0)
+CUDA_VERSION_MINOR=$(echo $CUDA_PATH | grep -oP "cuda-[0-9]+\.\K[0-9]+" || echo 0)
+
+# Se não conseguir extrair, tente pelo nvcc
+if [ "$CUDA_VERSION_MAJOR" = "0" ]; then
+    CUDA_VERSION_STR=$($CUDA_PATH/bin/nvcc --version | grep "release" | awk '{print $6}' | cut -d, -f1)
+    CUDA_VERSION_MAJOR=$(echo $CUDA_VERSION_STR | cut -d. -f1)
+    CUDA_VERSION_MINOR=$(echo $CUDA_VERSION_STR | cut -d. -f2)
+fi
+
+GXX_CUDA=""
+NVCC_COMPAT_FLAGS=""
+
+echo "Versão CUDA: $CUDA_VERSION_MAJOR.$CUDA_VERSION_MINOR"
+echo "Versão GCC: $GCC_VERSION"
+
+# Para CUDA 11.4 ou superior, GCC 11 é suportado oficialmente
+if [ "$GCC_VERSION" -gt "10" ]; then
+    if [ "$CUDA_VERSION_MAJOR" -ge "11" ] && [ "$CUDA_VERSION_MINOR" -ge "4" ]; then
+        echo "CUDA $CUDA_VERSION_MAJOR.$CUDA_VERSION_MINOR suporta GCC $GCC_VERSION"
+    elif command -v g++-10 &> /dev/null; then
         GXX_CUDA="CXXCUDA=g++-10"
         echo "Usando g++-10 para compatibilidade com CUDA"
     else
-        echo "AVISO: Seu GCC $GCC_VERSION pode ser incompatível com CUDA."
-        echo "Considere instalar GCC-10: sudo apt-get install gcc-10 g++-10"
+        echo "AVISO: Seu GCC $GCC_VERSION pode ser incompatível com CUDA $CUDA_VERSION_MAJOR.$CUDA_VERSION_MINOR"
+        echo "Tentando compilar com flag de compatibilidade não suportada"
+        NVCC_COMPAT_FLAGS="NVCC_COMPAT_FLAGS=--allow-unsupported-compiler"
+        echo "Se a compilação falhar, instale GCC-10: sudo apt-get install gcc-10 g++-10"
     fi
 fi
 
 # Compilar
 echo "Compilando VanitySearch com suporte a GPU..."
-echo "make gpu=1 CCAP=$CCAP $GXX_CUDA"
+echo "make gpu=1 CCAP=$CCAP $GXX_CUDA $NVCC_COMPAT_FLAGS"
 
-make gpu=1 CCAP=$CCAP $GXX_CUDA
+make gpu=1 CCAP=$CCAP $GXX_CUDA $NVCC_COMPAT_FLAGS
 
 if [ $? -eq 0 ]; then
     echo "Compilação bem-sucedida!"
