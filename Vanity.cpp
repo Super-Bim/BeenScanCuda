@@ -52,6 +52,7 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
                            Int *rangeStart, Int *rangeEnd, uint64_t keysPerCore)
   :inputPrefixes(inputPrefixes) {
 
+  // Inicializa valores padrão
   this->secp = secp;
   this->searchMode = searchMode;
   this->useGpu = useGpu;
@@ -68,12 +69,26 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
   this->startPubKeySpecified = !startPubKey.isZero();
   
   // Initialize range search parameters
+  this->rangeStart.SetInt32(0);
+  this->rangeEnd.SetInt32(0);
+  this->rangeWidth.SetInt32(0);
+  this->keysPerCore = 0;
+  
+  // Defina useRangeSearch apenas se os ponteiros de range forem válidos
   this->useRangeSearch = (rangeStart != NULL && rangeEnd != NULL);
+  
   if (this->useRangeSearch) {
     this->rangeStart.Set(rangeStart);
     this->rangeEnd.Set(rangeEnd);
     this->rangeWidth.Set(&this->rangeEnd);
     this->rangeWidth.Sub(&this->rangeStart);
+    
+    // Verifica se o range é válido
+    if (this->rangeWidth.IsZero() || this->rangeWidth.IsNegative()) {
+      printf("Error: Invalid range (end must be greater than start)\n");
+      exit(-1);
+    }
+    
     this->keysPerCore = (keysPerCore > 0) ? keysPerCore : STEP_SIZE;
     printf("Range search enabled: [0x%s -> 0x%s]\n", this->rangeStart.GetBase16().c_str(), this->rangeEnd.GetBase16().c_str());
 #ifdef WIN64
@@ -81,12 +96,6 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
 #else
     printf("Keys per core: %lu\n", (unsigned long)this->keysPerCore);
 #endif
-  } else {
-    this->keysPerCore = 0;
-    // Inicialização segura mesmo quando range não é usado
-    this->rangeStart.SetInt32(0);
-    this->rangeEnd.SetInt32(0); 
-    this->rangeWidth.SetInt32(0);
   }
 
   lastRekey = 0;
@@ -1294,40 +1303,58 @@ void VanitySearch::checkAddressesSSE(bool compressed,Int key, int i, Point p1, P
 }
 
 // ----------------------------------------------------------------------------
-void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
+void VanitySearch::getCPUStartingKey(int thId, Int& key, Point& startP) {
 
   if (rekey > 0) {
+    // Modo rekey: simplesmente gera uma chave aleatória
     key.Rand(256);
-  } else if (useRangeSearch && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
-    // Usar range de busca definido pelo usuário
+  } else if (useRangeSearch) {
+    // Modo range search: usa getRangeKey (que já tem as verificações necessárias)
     key = getRangeKey();
     
     // Adiciona um offset baseado no thread ID se keysPerCore estiver definido
     if (keysPerCore > 0) {
-      Int offset;
+      // Criar o offset para este thread
       Int threadOffset;
-      threadOffset.SetInt32(0);
-      threadOffset.Add((uint64_t)(thId * keysPerCore));
-      offset.Set(&threadOffset);
-      key.Add(&offset);
+      threadOffset.SetInt32(thId);
+      threadOffset.Mult(keysPerCore);
       
-      // Verifica se não ultrapassou o fim do range
+      // Adicionar à chave
+      key.Add(&threadOffset);
+      
+      // Verificar se ultrapassou o range
+      Int width;
+      width.Set(&rangeEnd);
+      width.Sub(&rangeStart);
+      
       if (key.IsGreater(&rangeEnd)) {
-        key.Set(&rangeStart);  // Volta ao início do range
+        // Se ultrapassou, voltar para o início + offset
+        key.Set(&rangeStart);
+        
+        // Calculamos quanto ultrapassou e usamos o módulo
+        Int exceededBy;
+        exceededBy.Set(&threadOffset);
+        exceededBy.Mod(&width);
+        
+        key.Add(&exceededBy);
       }
     }
   } else {
+    // Modo normal: usa a startKey + offset para o thread
     key.Set(&startKey);
     Int off((int64_t)thId);
     off.ShiftL(64);
     key.Add(&off);
   }
   
+  // Calcula a chave do meio do grupo e o ponto público correspondente
   Int km(&key);
   km.Add((uint64_t)CPU_GRP_SIZE / 2);
   startP = secp->ComputePublicKey(&km);
-  if(startPubKeySpecified)
-   startP = secp->AddDirect(startP,startPubKey);
+  
+  // Adiciona a startPubKey se especificada
+  if (startPubKeySpecified)
+    startP = secp->AddDirect(startP, startPubKey);
 }
 
 void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
@@ -1529,32 +1556,44 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
 
 void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p) {
 
+  // Calculamos uma largura de range (se estiver usando range search)
+  Int width;
+  if (useRangeSearch) {
+    width.Set(&rangeEnd);
+    width.Sub(&rangeStart);
+  }
+
   for (int i = 0; i < nbThread; i++) {
     if (rekey > 0) {
+      // Modo rekey: simplesmente gera uma chave aleatória
       keys[i].Rand(256);
-    } else if (useRangeSearch && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
-      // Usar range de busca definido pelo usuário
+    } else if (useRangeSearch) {
+      // Modo range search: usa getRangeKey (que já tem as verificações necessárias)
       keys[i] = getRangeKey();
       
       // Adiciona um offset baseado no thread ID e no index se keysPerCore estiver definido
       if (keysPerCore > 0) {
-        Int offset;
+        // Criar o offset para esta thread da GPU
         Int threadOffset;
         threadOffset.SetInt32(0);
-        threadOffset.Add((uint64_t)(thId * nbThread * keysPerCore + i * keysPerCore));
-        offset.Set(&threadOffset);
-        keys[i].Add(&offset);
+        uint64_t offset = (uint64_t)(thId * nbThread * keysPerCore + i * keysPerCore);
+        threadOffset.Add(offset);
         
-        // Verifica se não ultrapassou o fim do range
-        if (keys[i].IsGreater(&rangeEnd)) {
-          keys[i].Set(&rangeStart);  // Volta ao início do range
-          offset.Set(&threadOffset);
-          if (!rangeWidth.IsZero())
-            offset.Mod(&rangeWidth);  // Garante que não vai ultrapassar novamente
-          keys[i].Add(&offset);
+        // Adicionar à chave
+        keys[i].Add(&threadOffset);
+        
+        // Verificar se ultrapassou o range
+        if (!width.IsZero() && keys[i].IsGreater(&rangeEnd)) {
+          // Se ultrapassou, voltar para o início + offset
+          keys[i].Set(&rangeStart);
+          
+          // Calculamos quanto ultrapassou e usamos o módulo
+          threadOffset.Mod(&width);
+          keys[i].Add(&threadOffset);
         }
       }
     } else {
+      // Modo normal: usa a startKey + offset para a thread
       keys[i].Set(&startKey);
       Int offT((uint64_t)i);
       offT.ShiftL(80);
@@ -1563,14 +1602,18 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
       keys[i].Add(&offT);
       keys[i].Add(&offG);
     }
+    
+    // Adiciona metade do tamanho do grupo à chave inicial
     Int k(keys + i);
-    // Starting key is at the middle of the group
     k.Add((uint64_t)(groupSize / 2));
+    
+    // Calcula a chave pública correspondente
     p[i] = secp->ComputePublicKey(&k);
+    
+    // Adiciona a startPubKey se especificada
     if (startPubKeySpecified)
       p[i] = secp->AddDirect(p[i], startPubKey);
   }
-
 }
 
 void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
@@ -1636,18 +1679,31 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
     }
 
     if (ok) {
+      // Calcula largura do range se necessário
+      Int width;
+      if (useRangeSearch) {
+        width.Set(&rangeEnd);
+        width.Sub(&rangeStart);
+      }
+      
       for (int i = 0; i < nbThread; i++) {
+        // Sempre incrementa a chave pelo tamanho do passo
         keys[i].Add((uint64_t)STEP_SIZE);
         
         // Se estiver usando range search com limite de chaves por core, verifica se atingiu o limite
-        if (useRangeSearch && keysPerCore > 0 && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
+        if (useRangeSearch && keysPerCore > 0) {
           keysProcessed[i] += STEP_SIZE;
           
           // Se atingiu o limite de chaves, reinicia com uma nova chave aleatória dentro do range
           if (keysProcessed[i] >= keysPerCore) {
+            // Obtem uma nova chave dentro do range
             keys[i] = getRangeKey();
+            
+            // Adiciona offset para o meio do grupo
             Int k(keys + i);
             k.Add((uint64_t)(g.GetGroupSize() / 2));
+            
+            // Calcula o ponto público correspondente
             p[i] = secp->ComputePublicKey(&k);
             if (startPubKeySpecified)
               p[i] = secp->AddDirect(p[i], startPubKey);
@@ -1659,8 +1715,10 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       }
       
       // Redefine as chaves na GPU se alguma thread precisou reiniciar
-      if (useRangeSearch && keysPerCore > 0 && !rangeStart.IsZero() && !rangeEnd.IsZero()) {
+      if (useRangeSearch && keysPerCore > 0) {
         bool needReset = false;
+        
+        // Verifica se alguma thread precisou reiniciar
         for (int i = 0; i < nbThread; i++) {
           if (keysProcessed[i] == 0) {
             needReset = true;
@@ -1668,12 +1726,13 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
           }
         }
         
+        // Reseta todas as chaves na GPU se necessário
         if (needReset) {
           ok = g.SetKeys(p);
         }
       }
       
-      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
+      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point + endo1 + endo2 + symetrics
     }
 
   }
@@ -1902,20 +1961,29 @@ Int VanitySearch::getRangeKey() {
   // Gera uma chave aleatória dentro do range [rangeStart, rangeEnd]
   Int key;
   
-  if (!useRangeSearch || &rangeStart == NULL || &rangeEnd == NULL) {
+  if (!useRangeSearch) {
     // Se o range não estiver definido, gera uma chave aleatória completa (256 bits)
     key.Rand(256);
     return key;
   }
   
-  // Calcula um offset aleatório dentro do range
+  // Certifique-se de que temos um intervalo válido
+  Int width;
+  width.Set(&rangeEnd);
+  width.Sub(&rangeStart);
+  
+  if (width.IsZero() || width.IsNegative()) {
+    // Intervalo inválido, usar uma chave aleatória
+    key.Rand(256);
+    return key;
+  }
+  
+  // Gerar um offset aleatório dentro do range
   Int offset;
   offset.Rand(256);
-  // Garante que o offset está dentro do range (mod rangeWidth)
-  if (!rangeWidth.IsZero())
-    offset.Mod(&rangeWidth);
+  offset.Mod(&width);  // offset = random mod width
   
-  // Calcula a chave: rangeStart + offset
+  // key = rangeStart + offset
   key.Set(&rangeStart);
   key.Add(&offset);
   
