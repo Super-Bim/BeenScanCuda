@@ -16,25 +16,68 @@ fi
 CUDA_VERSION=$(nvcc --version | grep "release" | awk '{print $6}' | cut -c2-)
 echo "Versão do CUDA detectada: $CUDA_VERSION"
 
-# Copiar arquivos Linux
-echo "Copiando arquivos específicos para Linux..."
-cp Timer_Linux.cpp Timer.cpp 2>/dev/null || echo "Aviso: Timer_Linux.cpp não encontrado"
-cp Timer_Linux.h Timer.h 2>/dev/null || echo "Aviso: Timer_Linux.h não encontrado"
-cp Vanity_Linux.cpp Vanity.cpp 2>/dev/null || echo "Aviso: Vanity_Linux.cpp não encontrado"
-cp GPUEngine_Linux.cu GPU/GPUEngine.cu 2>/dev/null || echo "Aviso: GPUEngine_Linux.cu não encontrado"
-cp Makefile_Linux Makefile 2>/dev/null || echo "Aviso: Makefile_Linux não encontrado"
+# Verificar se os diretórios necessários existem
+echo "Verificando e criando diretórios necessários..."
+mkdir -p GPU
+mkdir -p hash
+mkdir -p obj
+mkdir -p obj/GPU
+mkdir -p obj/hash
 
-# Verificar se todos os arquivos necessários existem
-if [ ! -f "Makefile" ]; then
-    echo "ERRO: Arquivo Makefile não encontrado. A cópia falhou."
+# Verificar se os arquivos necessários existem
+echo "Verificando arquivos cruciais..."
+if [ ! -f "Vanity_Linux.cpp" ]; then
+    echo "ERRO: Arquivo Vanity_Linux.cpp não encontrado!"
     exit 1
 fi
 
-# Verificar se diretório GPU existe
-if [ ! -d "GPU" ]; then
-    echo "ERRO: Diretório GPU não encontrado."
-    echo "Criando diretório GPU..."
-    mkdir -p GPU
+if [ ! -f "Timer_Linux.h" ] || [ ! -f "Timer_Linux.cpp" ]; then
+    echo "AVISO: Arquivos Timer_Linux não encontrados. Tentando usar Timer.h e Timer.cpp..."
+    if [ ! -f "Timer.h" ] || [ ! -f "Timer.cpp" ]; then
+        echo "ERRO: Nem Timer_Linux nem Timer foram encontrados!"
+        exit 1
+    fi
+else
+    # Copiar arquivos Linux específicos
+    echo "Copiando arquivos específicos para Linux..."
+    cp Timer_Linux.cpp Timer.cpp || { echo "ERRO: Falha ao copiar Timer_Linux.cpp!"; exit 1; }
+    cp Timer_Linux.h Timer.h || { echo "ERRO: Falha ao copiar Timer_Linux.h!"; exit 1; }
+    cp Vanity_Linux.cpp Vanity.cpp || { echo "ERRO: Falha ao copiar Vanity_Linux.cpp!"; exit 1; }
+fi
+
+# Lidar com o arquivo GPUEngine.cu
+if [ ! -f "GPU/GPUEngine_Linux.cu" ]; then
+    echo "AVISO: GPU/GPUEngine_Linux.cu não encontrado!"
+    
+    if [ -f "GPUEngine_Linux.cu" ]; then
+        echo "Encontrado GPUEngine_Linux.cu no diretório raiz. Copiando para GPU/GPUEngine.cu..."
+        cp GPUEngine_Linux.cu GPU/GPUEngine.cu || { echo "ERRO: Falha ao copiar GPUEngine_Linux.cu!"; exit 1; }
+    elif [ ! -f "GPU/GPUEngine.cu" ]; then
+        echo "ERRO: Nenhuma versão do GPUEngine.cu encontrada!"
+        exit 1
+    else
+        echo "Usando GPU/GPUEngine.cu existente..."
+    fi
+else
+    echo "Copiando GPU/GPUEngine_Linux.cu para GPU/GPUEngine.cu..."
+    cp GPU/GPUEngine_Linux.cu GPU/GPUEngine.cu || { echo "ERRO: Falha ao copiar GPU/GPUEngine_Linux.cu!"; exit 1; }
+fi
+
+# Criar e verificar o Makefile
+if [ ! -f "Makefile_Linux" ]; then
+    echo "ERRO: Makefile_Linux não encontrado!"
+    exit 1
+fi
+
+echo "Copiando Makefile_Linux para Makefile..."
+cp Makefile_Linux Makefile || { echo "ERRO: Falha ao copiar Makefile_Linux!"; exit 1; }
+
+# Verificar se há erro no Makefile
+if ! grep -q "VanitySearch:" Makefile; then
+    echo "ERRO: A regra 'VanitySearch:' não foi encontrada no Makefile!"
+    echo "Verificando o conteúdo do Makefile:"
+    head -n 100 Makefile
+    exit 1
 fi
 
 # Detectar GPU e definir compute capability
@@ -67,7 +110,7 @@ fi
 
 # Compilar
 echo "Compilando com suporte a GPU..."
-make gpu=1 CCAP=$CCAP
+make gpu=1 CCAP=$CCAP -j4
 
 # Verificar se a compilação foi bem-sucedida
 if [ $? -eq 0 ]; then
@@ -81,7 +124,26 @@ if [ $? -eq 0 ]; then
         echo "============================================================="
     else
         echo "ERRO: Arquivo VanitySearch não foi criado apesar da compilação ter sido bem-sucedida."
-        echo "Verifique o Makefile para garantir que o nome do arquivo de saída está correto."
+        echo "Verificando possíveis causas:"
+        
+        # Verificar se o executável está em outro local
+        EXECUTABLE=$(find . -name "VanitySearch" -type f)
+        if [ ! -z "$EXECUTABLE" ]; then
+            echo "Executável encontrado em: $EXECUTABLE"
+            echo "Movendo para o diretório atual..."
+            cp "$EXECUTABLE" ./ || { echo "ERRO: Falha ao copiar executável!"; exit 1; }
+            chmod +x VanitySearch
+            echo "============================================================="
+            echo "Compilação concluída com sucesso!"
+            echo "Para executar o programa, use: ./VanitySearch -h"
+            echo "============================================================="
+            exit 0
+        fi
+        
+        # Verificar saída do make para identificar problemas
+        echo "Verificando se a linking falhou..."
+        make gpu=1 CCAP=$CCAP | grep -i error
+        echo "Por favor verifique se há erros acima."
         exit 1
     fi
 else
