@@ -1,6 +1,6 @@
 #!/bin/bash
 
-echo "Script de compilação para BeenScanCuda com CUDA 12.6 no Linux"
+echo "Script de compilação para VanitySearch com CUDA 12.6 no Linux"
 echo "============================================================="
 
 # Verificar se CUDA está instalado
@@ -59,7 +59,7 @@ make gpu=1 CCAP=$CCAP
 if [ $? -eq 0 ]; then
     echo "============================================================="
     echo "Compilação concluída com sucesso!"
-    echo "Para executar o programa, use: ./BeenScanCuda -h"
+    echo "Para executar o programa, use: ./VanitySearch -h"
     echo "============================================================="
 else
     echo "ERRO: A compilação falhou!"
@@ -67,4 +67,4 @@ else
 fi
 
 # Tornar executável
-chmod +x BeenScanCuda 
+chmod +x VanitySearch 

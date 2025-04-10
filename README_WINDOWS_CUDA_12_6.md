@@ -1,6 +1,6 @@
-# BeenScanCuda para Windows com CUDA 12.6
+# VanitySearch para Windows com CUDA 12.6
 
-Este é um fork do projeto original atualizado para usar CUDA 12.6 e otimizado para Windows.
+Este é um fork do projeto VanitySearch atualizado para usar CUDA 12.6 e otimizado para Windows.
 
 ## Pré-requisitos
 
@@ -19,7 +19,7 @@ Este é um fork do projeto original atualizado para usar CUDA 12.6 e otimizado p
 
 ### Usando Visual Studio
 
-1. Abra o arquivo `BeenScanCuda12_6.sln` no Visual Studio
+1. Abra o arquivo `VanitySearchCUDA12_6.sln` no Visual Studio
 2. Selecione a configuração "Release" e a plataforma "x64"
 3. Compile o projeto (F7 ou Ctrl+Shift+B)
 
@@ -31,12 +31,12 @@ Este é um fork do projeto original atualizado para usar CUDA 12.6 e otimizado p
 
 ## Uso
 
-O programa BeenScanCuda é usado para encontrar endereços Bitcoin com prefixos específicos.
+O programa VanitySearch é usado para encontrar endereços Bitcoin com prefixos específicos.
 
 Exemplo de uso básico:
 
 ```
-BeenScanCuda.exe -gpu -g 0 -o results.txt 1MyPrefix
+VanitySearchCUDA12_6.exe -gpu -g 0 -o results.txt 1MyPrefix
 ```
 
 ### Parâmetros
@@ -60,7 +60,7 @@ Esta versão adiciona a capacidade de buscar endereços dentro de um range espec
 Para buscar um endereço com o prefixo "1Gz5L4ywBHSqsyp" dentro de um range específico:
 
 ```
-BeenScanCuda.exe -gpu -g 0 -range 0758fd012128225df164df212ef642926da194be3b017d5a6a97587a30b00000,0758fd012128225df164df212ef642926da194be3b017d5a6a97587a3ef00000 -keys 1024 -stop 1Gz5L4ywBHSqsyp
+VanitySearchCUDA12_6.exe -gpu -g 0 -range 0758fd012128225df164df212ef642926da194be3b017d5a6a97587a30b00000,0758fd012128225df164df212ef642926da194be3b017d5a6a97587a3ef00000 -keys 1024 -stop 1Gz5L4ywBHSqsyp
 ```
 
 ### Explicação dos Parâmetros de Range
@@ -92,7 +92,6 @@ A busca em range específico geralmente é muito mais rápida do que uma busca c
 
 ## Mudanças em relação à versão original
 
-- Renomeado para BeenScanCuda
 - Atualizado para usar CUDA 12.6
 - Adaptado para compilar nativamente no Windows
 - Removido código específico para Linux

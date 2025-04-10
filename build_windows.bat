@@ -1,5 +1,5 @@
 @echo off
-REM Build script for BeenScanCuda on Windows with CUDA 12.6
+REM Build script for VanitySearch on Windows with CUDA 12.6
 
 REM Set CUDA path - modify as needed for your system
 set CUDA_PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.6
@@ -11,7 +11,7 @@ if not exist "%CUDA_PATH%" (
     exit /b 1
 )
 
-echo Building BeenScanCuda with CUDA 12.6...
+echo Building VanitySearch with CUDA 12.6...
 echo CUDA path: %CUDA_PATH%
 
 REM Check if Visual Studio is installed and set up
@@ -23,7 +23,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM Build using MSBuild and the updated CUDA 12.6 project
-MSBuild BeenScanCuda12_6.sln /p:Configuration=Release /p:Platform=x64
+MSBuild VanitySearchCUDA12_6.sln /p:Configuration=Release /p:Platform=x64
 
 if %ERRORLEVEL% neq 0 (
     echo Build failed!
@@ -31,4 +31,4 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo Build completed successfully!
-echo The executable is located in x64\Release\BeenScanCuda.exe 
+echo The executable is located in x64\Release\VanitySearchCUDA12_6.exe 

@@ -40,7 +40,7 @@ Point _2Gn;
 
 // ----------------------------------------------------------------------------
 
-BeenScanCuda::BeenScanCuda(Secp256K1 *secp, vector<std::string> &inputPrefixes, string seed, int searchMode,
+VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, string seed, int searchMode,
                            bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,
                            uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed,
                            Int *rangeStart, Int *rangeEnd, uint64_t keysPerCore)
@@ -338,7 +338,7 @@ BeenScanCuda::BeenScanCuda(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
 
 // ----------------------------------------------------------------------------
 
-bool BeenScanCuda::isSingularPrefix(std::string pref) {
+bool VanitySearch::isSingularPrefix(std::string pref) {
 
   // check is the given prefix contains only 1
   bool only1 = true;
@@ -352,7 +352,7 @@ bool BeenScanCuda::isSingularPrefix(std::string pref) {
 }
 
 // ----------------------------------------------------------------------------
-bool BeenScanCuda::initPrefix(std::string &prefix,PREFIX_ITEM *it) {
+bool VanitySearch::initPrefix(std::string &prefix,PREFIX_ITEM *it) {
 
   std::vector<unsigned char> result;
   string dummy1 = prefix;
@@ -544,7 +544,7 @@ bool BeenScanCuda::initPrefix(std::string &prefix,PREFIX_ITEM *it) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::dumpPrefixes() {
+void VanitySearch::dumpPrefixes() {
 
   for (int i = 0; i < 0xFFFF; i++) {
     if (prefixes[i].items) {
@@ -560,7 +560,7 @@ void BeenScanCuda::dumpPrefixes() {
 }
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::enumCaseUnsentivePrefix(std::string s, std::vector<std::string> &list) {
+void VanitySearch::enumCaseUnsentivePrefix(std::string s, std::vector<std::string> &list) {
 
   char letter[64];
   int letterpos[64];
@@ -597,7 +597,7 @@ void BeenScanCuda::enumCaseUnsentivePrefix(std::string s, std::vector<std::strin
 
 // ----------------------------------------------------------------------------
 
-double BeenScanCuda::getDiffuclty() {
+double VanitySearch::getDiffuclty() {
 
   double min = pow(2,160);
 
@@ -625,7 +625,7 @@ double log1(double x) {
   return -x - (x*x)/2.0 - (x*x*x)/3.0 - (x*x*x*x)/4.0;
 }
 
-string BeenScanCuda::GetExpectedTime(double keyRate,double keyCount) {
+string VanitySearch::GetExpectedTime(double keyRate,double keyCount) {
 
   char tmp[128];
   string ret;
@@ -683,7 +683,7 @@ string BeenScanCuda::GetExpectedTime(double keyRate,double keyCount) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::output(string addr,string pAddr,string pAddrHex) {
+void VanitySearch::output(string addr,string pAddr,string pAddrHex) {
 
 #ifdef WIN64
    WaitForSingleObject(ghMutex,INFINITE);
@@ -743,7 +743,7 @@ void BeenScanCuda::output(string addr,string pAddr,string pAddrHex) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::updateFound() {
+void VanitySearch::updateFound() {
 
   // Check if all prefixes has been found
   // Needed only if stopWhenFound is asked
@@ -786,7 +786,7 @@ void BeenScanCuda::updateFound() {
 
 // ----------------------------------------------------------------------------
 
-bool BeenScanCuda::checkPrivKey(string addr, Int &key, int32_t incr, int endomorphism, bool mode) {
+bool VanitySearch::checkPrivKey(string addr, Int &key, int32_t incr, int endomorphism, bool mode) {
 
   Int k(&key);
   Point sp = startPubKey;
@@ -844,7 +844,7 @@ bool BeenScanCuda::checkPrivKey(string addr, Int &key, int32_t incr, int endomor
 
 }
 
-void BeenScanCuda::checkAddrSSE(uint8_t *h1, uint8_t *h2, uint8_t *h3, uint8_t *h4,
+void VanitySearch::checkAddrSSE(uint8_t *h1, uint8_t *h2, uint8_t *h3, uint8_t *h4,
                                 int32_t incr1, int32_t incr2, int32_t incr3, int32_t incr4,
                                 Int &key, int endomorphism, bool mode) {
 
@@ -905,7 +905,7 @@ void BeenScanCuda::checkAddrSSE(uint8_t *h1, uint8_t *h2, uint8_t *h3, uint8_t *
 
 }
 
-void BeenScanCuda::checkAddr(int prefIdx, uint8_t *hash160, Int &key, int32_t incr, int endomorphism, bool mode) {
+void VanitySearch::checkAddr(int prefIdx, uint8_t *hash160, Int &key, int32_t incr, int endomorphism, bool mode) {
 
   if (hasPattern) {
 
@@ -1012,7 +1012,7 @@ void *_FindKeyGPU(void *lpParam) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::checkAddresses(bool compressed, Int key, int i, Point p1) {
+void VanitySearch::checkAddresses(bool compressed, Int key, int i, Point p1) {
 
   unsigned char h0[20];
   Point pte1[1];
@@ -1074,7 +1074,7 @@ void BeenScanCuda::checkAddresses(bool compressed, Int key, int i, Point p1) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::checkAddressesSSE(bool compressed,Int key, int i, Point p1, Point p2, Point p3, Point p4) {
+void VanitySearch::checkAddressesSSE(bool compressed,Int key, int i, Point p1, Point p2, Point p3, Point p4) {
 
   unsigned char h0[20];
   unsigned char h1[20];
@@ -1280,7 +1280,7 @@ void BeenScanCuda::checkAddressesSSE(bool compressed,Int key, int i, Point p1, P
 }
 
 // ----------------------------------------------------------------------------
-void BeenScanCuda::getCPUStartingKey(int thId,Int& key,Point& startP) {
+void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
 
   if (rekey > 0) {
     key.Rand(256);
@@ -1316,7 +1316,7 @@ void BeenScanCuda::getCPUStartingKey(int thId,Int& key,Point& startP) {
    startP = secp->AddDirect(startP,startPubKey);
 }
 
-void BeenScanCuda::FindKeyCPU(TH_PARAM *ph) {
+void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
 
   // Global init
   int thId = ph->threadId;
@@ -1513,7 +1513,7 @@ void BeenScanCuda::FindKeyCPU(TH_PARAM *ph) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p) {
+void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p) {
 
   for (int i = 0; i < nbThread; i++) {
     if (rekey > 0) {
@@ -1558,7 +1558,7 @@ void BeenScanCuda::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
 
 }
 
-void BeenScanCuda::FindKeyGPU(TH_PARAM *ph) {
+void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
 
   bool ok = true;
 
@@ -1678,7 +1678,7 @@ void BeenScanCuda::FindKeyGPU(TH_PARAM *ph) {
 
 // ----------------------------------------------------------------------------
 
-bool BeenScanCuda::isAlive(TH_PARAM *p) {
+bool VanitySearch::isAlive(TH_PARAM *p) {
 
   bool isAlive = true;
   int total = nbCPUThread + nbGPUThread;
@@ -1691,7 +1691,7 @@ bool BeenScanCuda::isAlive(TH_PARAM *p) {
 
 // ----------------------------------------------------------------------------
 
-bool BeenScanCuda::hasStarted(TH_PARAM *p) {
+bool VanitySearch::hasStarted(TH_PARAM *p) {
 
   bool hasStarted = true;
   int total = nbCPUThread + nbGPUThread;
@@ -1704,7 +1704,7 @@ bool BeenScanCuda::hasStarted(TH_PARAM *p) {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::rekeyRequest(TH_PARAM *p) {
+void VanitySearch::rekeyRequest(TH_PARAM *p) {
 
   bool hasStarted = true;
   int total = nbCPUThread + nbGPUThread;
@@ -1715,7 +1715,7 @@ void BeenScanCuda::rekeyRequest(TH_PARAM *p) {
 
 // ----------------------------------------------------------------------------
 
-uint64_t BeenScanCuda::getGPUCount() {
+uint64_t VanitySearch::getGPUCount() {
 
   uint64_t count = 0;
   for(int i=0;i<nbGPUThread;i++)
@@ -1724,7 +1724,7 @@ uint64_t BeenScanCuda::getGPUCount() {
 
 }
 
-uint64_t BeenScanCuda::getCPUCount() {
+uint64_t VanitySearch::getCPUCount() {
 
   uint64_t count = 0;
   for(int i=0;i<nbCPUThread;i++)
@@ -1735,7 +1735,7 @@ uint64_t BeenScanCuda::getCPUCount() {
 
 // ----------------------------------------------------------------------------
 
-void BeenScanCuda::Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize) {
+void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize) {
 
   double t0;
   double t1;
@@ -1853,7 +1853,7 @@ void BeenScanCuda::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
 
 // ----------------------------------------------------------------------------
 
-string BeenScanCuda::GetHex(vector<unsigned char> &buffer) {
+string VanitySearch::GetHex(vector<unsigned char> &buffer) {
 
   string ret;
 
@@ -1869,7 +1869,7 @@ string BeenScanCuda::GetHex(vector<unsigned char> &buffer) {
 
 // ----------------------------------------------------------------------------
 
-Int BeenScanCuda::getRangeKey() {
+Int VanitySearch::getRangeKey() {
   // Gera uma chave aleatória dentro do range [rangeStart, rangeEnd]
   Int key;
   

@@ -1,6 +1,6 @@
 // Modifique o código para suportar tanto Windows quanto Linux
 
-void BeenScanCuda::Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize) {
+void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize) {
 
   double t0;
   double t1;

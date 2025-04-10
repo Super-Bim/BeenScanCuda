@@ -1,5 +1,5 @@
 /*
- * This file is part of the BeenScanCuda distribution
+ * This file is part of the VanitySearch distribution (https://github.com/JeanLucPons/VanitySearch).
  * Copyright (c) 2019 Jean Luc PONS.
  *
  * This program is free software: you can redistribute it and/or modify
@@ -26,11 +26,11 @@
 
 #define CPU_GRP_SIZE 1024
 
-class BeenScanCuda;
+class VanitySearch;
 
 typedef struct {
 
-  BeenScanCuda *obj;
+  VanitySearch *obj;
   int  threadId;
   bool isRunning;
   bool hasStarted;
@@ -64,11 +64,11 @@ typedef struct {
 
 } PREFIX_TABLE_ITEM;
 
-class BeenScanCuda {
+class VanitySearch {
 
 public:
 
-  BeenScanCuda(Secp256K1 *secp, std::vector<std::string> &prefix, std::string seed, int searchMode,
+  VanitySearch(Secp256K1 *secp, std::vector<std::string> &prefix, std::string seed, int searchMode,
                bool useGpu, bool stop, std::string outputFile, bool useSSE, uint32_t maxFound, uint64_t rekey,
                bool caseSensitive, Point &startPubKey, bool paranoiacSeed, 
                Int *rangeStart = NULL, Int *rangeEnd = NULL, uint64_t keysPerCore = 0);

@@ -1,5 +1,5 @@
 #---------------------------------------------------------------------
-# Makefile for BeenScanCuda Linux CUDA 12.6
+# Makefile for VanitySearch Linux CUDA 12.6
 #
 # Author : Jean-Luc PONS
 
@@ -70,11 +70,11 @@ endif
 $(OBJDIR)/%.o : %.cpp
 	$(CXX) $(CXXFLAGS) -o $@ -c $<
 
-all: BeenScanCuda
+all: VanitySearch
 
-BeenScanCuda: $(OBJET)
-	@echo Making BeenScanCuda...
-	$(CXX) $(OBJET) $(LFLAGS) -o BeenScanCuda
+VanitySearch: $(OBJET)
+	@echo Making VanitySearch...
+	$(CXX) $(OBJET) $(LFLAGS) -o VanitySearch
 
 $(OBJET): | $(OBJDIR) $(OBJDIR)/GPU $(OBJDIR)/hash
 
@@ -92,4 +92,4 @@ clean:
 	@rm -f obj/*.o
 	@rm -f obj/GPU/*.o
 	@rm -f obj/hash/*.o
-	@rm -f BeenScanCuda 
+	@rm -f VanitySearch 

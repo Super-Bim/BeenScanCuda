@@ -33,7 +33,7 @@ using namespace std;
 
 void printUsage() {
 
-  printf("BeenScanCuda [-check] [-v] [-u] [-b] [-c] [-gpu] [-stop] [-i inputfile]\n");
+  printf("VanitySearch [-check] [-v] [-u] [-b] [-c] [-gpu] [-stop] [-i inputfile]\n");
   printf("             [-gpuId gpuId1[,gpuId2,...]] [-g gridSize1[,gridSize2,...]]\n");
   printf("             [-o outputfile] [-m maxFound] [-ps seed] [-s seed] [-t nbThread]\n");
   printf("             [-nosse] [-r rekey] [-sp startPub] [-kp]\n");
@@ -166,7 +166,7 @@ void generateKeyPair(Secp256K1 *secp, string seed, int searchMode,bool paranoiac
 
   if (seed.length() < 8) {
     printf("Error: Use a seed of at least 8 characters to generate a key pair\n");
-    printf("Ex: BeenScanCuda -s \"A Strong Password\" -kp\n");
+    printf("Ex: VanitySearch -s \"A Strong Password\" -kp\n");
     exit(-1);
   }
 
@@ -180,7 +180,7 @@ void generateKeyPair(Secp256K1 *secp, string seed, int searchMode,bool paranoiac
 
   bool compressed = (searchMode == SEARCH_COMPRESSED);
 
-  string salt = "BeenScanCuda";
+  string salt = "VanitySearch";
   unsigned char hseed[64];
   pbkdf2_hmac_sha512(hseed, 64, (const uint8_t *)seed.c_str(), seed.length(),
     (const uint8_t *)salt.c_str(), salt.length(),
@@ -591,7 +591,7 @@ int main(int argc, char* argv[]) {
 
   }
 
-  printf("BeenScanCuda v" RELEASE "\n");
+  printf("VanitySearch v" RELEASE "\n");
 
   if(gridSize.size()==0) {
     for (int i = 0; i < gpuId.size(); i++) {
@@ -621,7 +621,7 @@ int main(int argc, char* argv[]) {
     searchMode = (startPubKeyCompressed)?SEARCH_COMPRESSED:SEARCH_UNCOMPRESSED;
   }
 
-  BeenScanCuda *v = new BeenScanCuda(secp, prefix, seed, searchMode, gpuEnable, stop, outputFile, sse,
+  VanitySearch *v = new VanitySearch(secp, prefix, seed, searchMode, gpuEnable, stop, outputFile, sse,
     maxFound, rekey, caseSensitive, startPuKey, paranoiacSeed, rangeStart, rangeEnd, keysPerCore);
   v->Search(nbCPUThread,gpuId,gridSize);
 

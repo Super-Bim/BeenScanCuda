@@ -1,6 +1,6 @@
-# BeenScanCuda para Linux com CUDA 12.6
+# VanitySearch para Linux com CUDA 12.6
 
-Este é um fork do projeto original atualizado para usar CUDA 12.6 no sistema Linux.
+Este é um fork do projeto VanitySearch atualizado para usar CUDA 12.6 no sistema Linux.
 
 ## Pré-requisitos
 
@@ -25,8 +25,8 @@ Este é um fork do projeto original atualizado para usar CUDA 12.6 no sistema Li
 
 3. Clone ou baixe este repositório:
    ```
-   git clone https://github.com/seu-usuario/BeenScanCuda.git
-   cd BeenScanCuda
+   git clone https://github.com/seu-usuario/VanitySearch.git
+   cd VanitySearch
    ```
 
 ## Compilação
@@ -83,12 +83,12 @@ Se preferir compilar manualmente:
 
 ## Uso
 
-O programa BeenScanCuda é usado para encontrar endereços Bitcoin com prefixos específicos.
+O programa VanitySearch é usado para encontrar endereços Bitcoin com prefixos específicos.
 
 Exemplo de uso básico:
 
 ```
-./BeenScanCuda -gpu -g 0 -o results.txt 1MyPrefix
+./VanitySearch -gpu -g 0 -o results.txt 1MyPrefix
 ```
 
 ### Parâmetros
@@ -112,7 +112,7 @@ Esta versão adiciona a capacidade de buscar endereços dentro de um range espec
 Para buscar um endereço com o prefixo "1Gz5L4ywBHSqsyp" dentro de um range específico:
 
 ```
-./BeenScanCuda -gpu -g 0 -range 0758fd012128225df164df212ef642926da194be3b017d5a6a97587a30b00000,0758fd012128225df164df212ef642926da194be3b017d5a6a97587a3ef00000 -keys 1024 -stop 1Gz5L4ywBHSqsyp
+./VanitySearch -gpu -g 0 -range 0758fd012128225df164df212ef642926da194be3b017d5a6a97587a30b00000,0758fd012128225df164df212ef642926da194be3b017d5a6a97587a3ef00000 -keys 1024 -stop 1Gz5L4ywBHSqsyp
 ```
 
 ### Explicação dos Parâmetros de Range
@@ -158,7 +158,6 @@ A busca em range específico geralmente é muito mais rápida do que uma busca c
 
 ## Mudanças em relação à versão original
 
-- Renomeado para BeenScanCuda
 - Atualizado para usar CUDA 12.6
 - Adicionada funcionalidade de busca em range específico de chaves privadas
 - Atualizado para computadores com arquiteturas de GPU modernas
