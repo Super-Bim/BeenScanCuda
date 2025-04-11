@@ -1553,6 +1553,10 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
 
   ph->hasStarted = true;
 
+  // Contador de erros consecutivos para lidar com instabilidade no Linux
+  int consecutiveErrors = 0;
+  bool memoryReleased = false;
+
   // GPU Thread
   while (ok && !endOfSearch) {
 
@@ -1566,9 +1570,73 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       ph->rekeyRequest = false;
     }
 
-    // Call kernel para 1 passo apenas (liberando memória após cada passo)
+    // Call kernel
     ok = g.Launch(found);
 
+    // Se deu erro no kernel, tentar recuperar (especialmente importante no Linux)
+    if (!ok) {
+      printf("GPU Thread #%d: Erro no kernel, tentando reiniciar...\n", thId);
+      consecutiveErrors++;
+      
+      // Em caso de múltiplos erros consecutivos, pode ser um problema de memória mais grave
+      if (consecutiveErrors > 3) {
+        printf("GPU Thread #%d: Múltiplos erros consecutivos, tentando liberar memória e reiniciar\n", thId);
+        
+        // Tentar liberar memória da GPU no Linux
+        #ifndef _WIN64
+        if (!memoryReleased) {
+          // No Linux, tenta liberar e realocar memória da GPU usando a função especializada
+          g.ManageLinuxMemory();
+          memoryReleased = true;
+        }
+        #endif
+        
+        // Reiniciar com novas chaves
+        if (useKeyRange) {
+          getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+        } else {
+          getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+        }
+        
+        // Reconfigurando o engine após o reset
+        g.SetSearchMode(searchMode);
+        g.SetSearchType(searchType);
+        if (onlyFull) {
+          g.SetPrefix(usedPrefixL,nbPrefix);
+        } else {
+          if(hasPattern)
+            g.SetPattern(inputPrefixes[0].c_str());
+          else
+            g.SetPrefix(usedPrefix);
+        }
+        
+        ok = g.SetKeys(p);
+        consecutiveErrors = 0;
+        
+        // Continuar para a próxima iteração
+        continue;
+      }
+      
+      // Em Linux, tenta recuperar com o gerenciamento de memória
+      #ifndef _WIN64
+      g.ManageLinuxMemory();
+      #endif
+      
+      if (useKeyRange) {
+        getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+      } else {
+        getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+      }
+      
+      ok = g.SetKeys(p);
+      continue;
+    }
+    
+    // Reset contador de erros quando operação bem-sucedida
+    consecutiveErrors = 0;
+    memoryReleased = false;
+
+    // Processar itens encontrados
     for(int i=0;i<(int)found.size() && !endOfSearch;i++) {
       ITEM it = found[i];
       checkAddr(*(prefix_t *)(it.hash), it.hash, keys[it.thId], it.incr, it.endo, it.mode);
