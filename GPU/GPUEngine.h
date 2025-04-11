@@ -69,6 +69,7 @@ public:
   int GetGroupSize();
   void SetMaxStep(uint64_t maxStep);
   uint64_t GetMaxStep();
+  bool ManageLinuxMemory();
 
   bool Check(Secp256K1 *secp);
   std::string deviceName;

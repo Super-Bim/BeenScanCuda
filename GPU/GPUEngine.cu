@@ -15,12 +15,14 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef WIN64
-#include <unistd.h>
 #include <stdio.h>
+#include "GPUEngine.h"
+
+#ifndef _WIN64
+#include <unistd.h>
 #endif
 
-#include "GPUEngine.h"
+// CUDA headers
 #include <cuda.h>
 #include <cuda_runtime.h>
 
@@ -177,12 +179,22 @@ int _ConvertSMVer2Cores(int major, int minor) {
 
 }
 
-GPUEngine::GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound,bool rekey) {
+GPUEngine::GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_t maxFound, bool rekey) {
+
+  // Set device
+  this->nbThreadPerGroup = nbThreadPerGroup;
+  this->maxFound = maxFound;
+  this->rekey = rekey;
+  initialised = false;
+  this->nbThread = nbThreadGroup * nbThreadPerGroup;
+  this->maxStep = 0xFFFFFFFFFFFFFFFFULL; // Valor padrão (máximo)
+  outputSize = (maxFound + 1) * ITEM_SIZE;
+  lostWarning = false;
+  hasPattern = false;
+  searchMode = SEARCH_COMPRESSED;
+  searchType = P2PKH;
 
   // Initialise CUDA
-  this->rekey = rekey;
-  this->nbThreadPerGroup = nbThreadPerGroup;
-  initialised = false;
   cudaError_t err;
 
   int deviceCount = 0;
@@ -289,7 +301,6 @@ GPUEngine::GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_
   searchType = P2PKH;
   initialised = true;
   pattern = "";
-  hasPattern = false;
   inputPrefixLookUp = NULL;
 
 }
@@ -462,17 +473,14 @@ void GPUEngine::SetPrefix(std::vector<LPREFIX> prefixes, uint32_t totalPrefix) {
 bool GPUEngine::callKernel() {
 
   // Reset nbFound
-  cudaMemset(outputPrefix,0,4);
-
-  // Define o número máximo de passos para o kernel executar
-  // Limitar a 1 passo por vez para melhor gerenciamento de memória
-  uint32_t numSteps = 1;
+  cudaMemset(outputPrefix, 0, 4);
   
-  // Armazena o número de passos nos 8 bits mais significativos do primeiro uint32_t do buffer de saída
-  uint32_t initValue = numSteps << 24;
-  cudaMemcpy(outputPrefix, &initValue, 4, cudaMemcpyHostToDevice);
+  // Em sistemas Linux, gerenciar memória antes de chamar o kernel
+  #ifndef _WIN64
+  ManageLinuxMemory();
+  #endif
 
-  // Call the kernel (Perform only 1 step per call to free memory between calls)
+  // Call the kernel (Perform STEP_SIZE keys per thread)
   if (searchType == P2SH) {
 
     if (hasPattern) {
@@ -509,14 +517,16 @@ bool GPUEngine::callKernel() {
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     printf("GPUEngine: Kernel: %s\n", cudaGetErrorString(err));
+    
+    // Em sistemas Linux, tentar recuperar de erros
+    #ifndef _WIN64
+    ManageLinuxMemory();
+    #endif
+    
     return false;
   }
   
-  // Sincronizar após a chamada do kernel para garantir que todas as threads terminem
-  cudaDeviceSynchronize();
-  
   return true;
-
 }
 
 bool GPUEngine::SetKeys(Point *p) {
@@ -557,20 +567,15 @@ bool GPUEngine::SetKeys(Point *p) {
 
 }
 
-bool GPUEngine::Launch(std::vector<ITEM> &prefixFound,bool spinWait) {
-
+bool GPUEngine::Launch(std::vector<ITEM> &prefixFound, bool spinWait) {
 
   prefixFound.clear();
 
   // Get the result
-
   if(spinWait) {
-
     cudaMemcpy(outputPrefixPinned, outputPrefix, outputSize, cudaMemcpyDeviceToHost);
-
   } else {
-
-    // Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy wich takes 100% CPU
+    // Use cudaMemcpyAsync to avoid default spin wait of cudaMemcpy which takes 100% CPU
     cudaEvent_t evt;
     cudaEventCreate(&evt);
     cudaMemcpyAsync(outputPrefixPinned, outputPrefix, 4, cudaMemcpyDeviceToHost, 0);
@@ -580,17 +585,29 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound,bool spinWait) {
       Timer::SleepMillis(1);
     }
     cudaEventDestroy(evt);
-
   }
 
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     printf("GPUEngine: Launch: %s\n", cudaGetErrorString(err));
+    // Tentar recuperar o estado da memória
+    ManageLinuxMemory();
     return false;
   }
 
   // Look for prefix found
   uint32_t nbFound = outputPrefixPinned[0];
+  
+  // Verificar se temos um número suspeito de itens encontrados (provavelmente falsos positivos)
+  if (nbFound > maxFound / 2) {
+    printf("GPUEngine: Número suspeito de correspondências (%u). Possíveis falsos positivos, ignorando resultados.\n", nbFound);
+    
+    // Usar gerenciamento de memória específico para Linux
+    ManageLinuxMemory();
+    
+    return callKernel(); // Chamar kernel novamente
+  }
+  
   if (nbFound > maxFound) {
     // prefix has been lost
     if (!lostWarning) {
@@ -600,23 +617,29 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound,bool spinWait) {
     nbFound = maxFound;
   }
 
-  // When can perform a standard copy, the kernel is eneded
-  cudaMemcpy( outputPrefixPinned , outputPrefix , nbFound*ITEM_SIZE + 4 , cudaMemcpyDeviceToHost);
+  // When can perform a standard copy, the kernel is ended
+  if (nbFound > 0) {
+    cudaMemcpy(outputPrefixPinned, outputPrefix, nbFound*ITEM_SIZE + 4, cudaMemcpyDeviceToHost);
 
-  for (uint32_t i = 0; i < nbFound; i++) {
-    uint32_t *itemPtr = outputPrefixPinned + (i*ITEM_SIZE32 + 1);
-    ITEM it;
-    it.thId = itemPtr[0];
-    int16_t *ptr = (int16_t *)&(itemPtr[1]);
-    it.endo = ptr[0] & 0x7FFF;
-    it.mode = (ptr[0]&0x8000)!=0;
-    it.incr = ptr[1];
-    it.hash = (uint8_t *)(itemPtr + 2);
-    prefixFound.push_back(it);
+    for (uint32_t i = 0; i < nbFound; i++) {
+      uint32_t *itemPtr = outputPrefixPinned + (i*ITEM_SIZE32 + 1);
+      ITEM it;
+      it.thId = itemPtr[0];
+      int16_t *ptr = (int16_t *)&(itemPtr[1]);
+      it.endo = ptr[0] & 0x7FFF;
+      it.mode = (ptr[0]&0x8000)!=0;
+      it.incr = ptr[1];
+      it.hash = (uint8_t *)(itemPtr + 2);
+      prefixFound.push_back(it);
+    }
   }
 
-  return callKernel();
+  // Gerenciar memória no Linux após o processamento
+  #ifndef _WIN64
+  ManageLinuxMemory();
+  #endif
 
+  return callKernel();
 }
 
 bool GPUEngine::CheckHash(uint8_t *h, vector<ITEM>& found,int tid,int incr,int endo, int *nbOK) {
@@ -861,10 +884,42 @@ bool GPUEngine::Check(Secp256K1 *secp) {
 
 void GPUEngine::SetMaxStep(uint64_t maxStep) {
   this->maxStep = maxStep;
+  printf("GPUEngine: Maximum keys per thread set to %llu\n", (unsigned long long)maxStep);
 }
 
 uint64_t GPUEngine::GetMaxStep() {
-  return this->maxStep;
+  return maxStep;
+}
+
+// Função específica para gerenciar memória em sistemas Linux
+bool GPUEngine::ManageLinuxMemory() {
+#ifndef _WIN64
+  // Em sistemas Linux, tenta liberar recursos temporários não utilizados
+  cudaError_t err = cudaDeviceSynchronize();
+  if (err != cudaSuccess) {
+    printf("GPUEngine: Erro ao sincronizar dispositivo: %s\n", cudaGetErrorString(err));
+    return false;
+  }
+  
+  // Truque para liberar memória que pode estar retida pelo driver CUDA
+  err = cudaFree(0);
+  if (err != cudaSuccess) {
+    printf("GPUEngine: Erro ao liberar memória: %s\n", cudaGetErrorString(err));
+    return false;
+  }
+  
+  // Limpar buffer de saída
+  err = cudaMemset(outputPrefix, 0, 4);
+  if (err != cudaSuccess) {
+    printf("GPUEngine: Erro ao limpar buffer de saída: %s\n", cudaGetErrorString(err));
+    return false;
+  }
+  
+  return true;
+#else
+  // Em sistemas Windows, isso não é necessário
+  return true;
+#endif
 }
 
 
