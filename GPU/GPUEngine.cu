@@ -15,7 +15,11 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
+#ifndef WIN64
+#include <unistd.h>
 #include <stdio.h>
+#endif
+
 #include "GPUEngine.h"
 #include <cuda.h>
 #include <cuda_runtime.h>
@@ -153,8 +157,10 @@ int _ConvertSMVer2Cores(int major, int minor) {
       {0x80,  64},
       {0x86, 128},
       {0x87, 128},
-      {0x89, 128}, // Ada Lovelace
-      {0x90, 128}, // Hopper
+      {0x89, 128},
+      {0x90, 128},  // Hopper Generation
+      {0x91, 128},  // Hopper Variant
+      {0xC0, 128},  // Blackwell Architecture (SM 12.0)
       {-1, -1} };
 
   int index = 0;
