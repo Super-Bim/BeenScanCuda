@@ -57,6 +57,8 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,s
   this->hasPattern = false;
   this->caseSensitive = caseSensitive;
   this->startPubKeySpecified = !startPubKey.isZero();
+  this->useKeyRange = false;
+  this->keysPerThread = 500000000ULL;
 
   lastRekey = 0;
   prefixes.clear();
@@ -1520,7 +1522,15 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
 
   counters[thId] = 0;
 
-  getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  // Usar o método apropriado para gerar as chaves iniciais
+  if (useKeyRange) {
+    // Configurar o número máximo de chaves a serem verificadas por thread
+    g.SetMaxStep(keysPerThread);
+    printf("GPU Thread #%d: Verificando até %.0f chaves por thread\n", thId, (double)keysPerThread);
+    getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  } else {
+    getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  }
 
   g.SetSearchMode(searchMode);
   g.SetSearchType(searchType);
@@ -1533,7 +1543,13 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       g.SetPrefix(usedPrefix);
   }
 
-  getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  // Usar o método apropriado para gerar as chaves iniciais
+  if (useKeyRange) {
+    getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  } else {
+    getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+  }
+
   ok = g.SetKeys(p);
   ph->rekeyRequest = false;
 
@@ -1783,4 +1799,46 @@ string VanitySearch::GetHex(vector<unsigned char> &buffer) {
 
   return ret;
 
+}
+
+void VanitySearch::SetKeyRange(std::string start, std::string end) {
+  // Configurar o range de chaves para a busca
+  rangeStart.SetBase16((char *)start.c_str());
+  rangeEnd.SetBase16((char *)end.c_str());
+  useKeyRange = true;
+  
+  printf("Range de busca configurado:\n");
+  printf("Início: %s\n", start.c_str());
+  printf("Fim:    %s\n", end.c_str());
+}
+
+void VanitySearch::getRangeGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p) {
+
+  // Calcula o tamanho do range
+  Int rangeSize;
+  rangeSize.Set(&rangeEnd);
+  rangeSize.Sub(&rangeStart);
+
+  // Para cada thread, sorteia um ponto aleatório dentro do range
+  for (int i = 0; i < nbThread; i++) {
+    // Gerar um número aleatório no range
+    Int randomOffset;
+    randomOffset.Rand(rangeSize.GetBitLength());
+    randomOffset.Mod(&rangeSize);
+
+    // Definir a chave como rangeStart + offset aleatório
+    keys[i].Set(&rangeStart);
+    keys[i].Add(&randomOffset);
+
+    // Starting key is at the middle of the group
+    Int k(keys + i);
+    k.Add((uint64_t)(groupSize / 2));
+    
+    // Computar a chave pública
+    p[i] = secp->ComputePublicKey(&k);
+    
+    // Adicionar startPubKey se especificado
+    if (startPubKeySpecified)
+      p[i] = secp->AddDirect(p[i], startPubKey);
+  }
 }

@@ -37,7 +37,8 @@ void printUsage() {
   printf("             [-gpuId gpuId1[,gpuId2,...]] [-g g1x,g1y,[,g2x,g2y,...]]\n");
   printf("             [-o outputfile] [-m maxFound] [-ps seed] [-s seed] [-t nbThread]\n");
   printf("             [-nosse] [-r rekey] [-check] [-kp] [-sp startPubKey]\n");
-  printf("             [-rp privkey partialkeyfile] [prefix]\n\n");
+  printf("             [-rp privkey partialkeyfile] [-rangeStart hexKey] [-rangeEnd hexKey]\n");
+  printf("             [-keysPerThread keyCount] [prefix]\n\n");
   printf(" prefix: prefix to search (Can contains wildcard '?' or '*')\n");
   printf(" -v: Print version\n");
   printf(" -u: Search uncompressed addresses\n");
@@ -62,6 +63,9 @@ void printUsage() {
   printf(" -rp privkey partialkeyfile: Reconstruct final private key(s) from partial key(s) info.\n");
   printf(" -sp startPubKey: Start the search with a pubKey (for private key splitting)\n");
   printf(" -r rekey: Rekey interval in MegaKey, default is disabled\n");
+  printf(" -rangeStart hexKey: Hexadecimal start key for the range to search\n");
+  printf(" -rangeEnd hexKey: Hexadecimal end key for the range to search\n");
+  printf(" -keysPerThread keyCount: Number of keys to check per thread (default: 500000000)\n");
   exit(0);
 
 }
@@ -400,6 +404,9 @@ int main(int argc, char* argv[]) {
   bool startPubKeyCompressed;
   bool caseSensitive = true;
   bool paranoiacSeed = false;
+  string rangeStart = "";
+  string rangeEnd = "";
+  uint64_t keysPerThread = 500000000ULL; // Padrão: 500 milhões de chaves
 
   while (a < argc) {
 
@@ -530,6 +537,18 @@ int main(int argc, char* argv[]) {
       a++;
       rekey = (uint64_t)getInt("rekey", argv[a]);
       a++;
+    } else if (strcmp(argv[a], "-rangeStart") == 0) {
+      a++;
+      rangeStart = string(argv[a]);
+      a++;
+    } else if (strcmp(argv[a], "-rangeEnd") == 0) {
+      a++;
+      rangeEnd = string(argv[a]);
+      a++;
+    } else if (strcmp(argv[a], "-keysPerThread") == 0) {
+      a++;
+      keysPerThread = strtoull(argv[a], NULL, 10);
+      a++;
     } else if (strcmp(argv[a], "-h") == 0) {
       printUsage();
     } else if (a == argc - 1) {
@@ -568,6 +587,18 @@ int main(int argc, char* argv[]) {
 
   VanitySearch *v = new VanitySearch(secp, prefix, seed, searchMode, gpuEnable, stop, outputFile, sse,
     maxFound, rekey, caseSensitive, startPuKey, paranoiacSeed);
+    
+  // Configurar o número de chaves por thread
+  v->keysPerThread = keysPerThread;
+    
+  // Configurar o range se ambos os parâmetros foram fornecidos
+  if (!rangeStart.empty() && !rangeEnd.empty()) {
+    v->SetKeyRange(rangeStart, rangeEnd);
+  } else if (!rangeStart.empty() || !rangeEnd.empty()) {
+    printf("Error: Both -rangeStart and -rangeEnd must be specified together\n");
+    exit(-1);
+  }
+  
   v->Search(nbCPUThread,gpuId,gridSize);
 
   return 0;

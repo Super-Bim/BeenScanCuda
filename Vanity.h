@@ -77,6 +77,8 @@ public:
   void Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
   void FindKeyCPU(TH_PARAM *p);
   void FindKeyGPU(TH_PARAM *p);
+  void SetKeyRange(std::string start, std::string end);
+  uint64_t keysPerThread;
 
 private:
 
@@ -102,6 +104,7 @@ private:
   void updateFound();
   void getCPUStartingKey(int thId, Int& key, Point& startP);
   void getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p);
+  void getRangeGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p);
   void enumCaseUnsentivePrefix(std::string s, std::vector<std::string> &list);
   bool prefixMatch(char *prefix, char *addr);
 
@@ -145,6 +148,10 @@ private:
 #else
   pthread_mutex_t  ghMutex;
 #endif
+
+  Int rangeStart;
+  Int rangeEnd;
+  bool useKeyRange;
 
 };
 
