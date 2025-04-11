@@ -37,8 +37,8 @@ void printUsage() {
   printf("             [-gpuId gpuId1[,gpuId2,...]] [-g g1x,g1y,[,g2x,g2y,...]]\n");
   printf("             [-o outputfile] [-m maxFound] [-ps seed] [-s seed] [-t nbThread]\n");
   printf("             [-nosse] [-r rekey] [-check] [-kp] [-sp startPubKey]\n");
-  printf("             [-rp privkey partialkeyfile] [-rangeStart hexKey] [-rangeEnd hexKey]\n");
-  printf("             [-keysPerThread keyCount] [-kt keyCount] [prefix]\n\n");
+  printf("             [-rp privkey partialkeyfile] [-rg start,end] [-keysPerThread keyCount]\n");
+  printf("             [-kt keyCount] [prefix]\n\n");
   printf(" prefix: prefix to search (Can contains wildcard '?' or '*')\n");
   printf(" -v: Print version\n");
   printf(" -u: Search uncompressed addresses\n");
@@ -63,8 +63,9 @@ void printUsage() {
   printf(" -rp privkey partialkeyfile: Reconstruct final private key(s) from partial key(s) info.\n");
   printf(" -sp startPubKey: Start the search with a pubKey (for private key splitting)\n");
   printf(" -r rekey: Rekey interval in MegaKey, default is disabled\n");
-  printf(" -rangeStart hexKey: Hexadecimal start key for the range to search\n");
-  printf(" -rangeEnd hexKey: Hexadecimal end key for the range to search\n");
+  printf(" -rangeStart: Start range key for search (hex)\n");
+  printf(" -rangeEnd: End range key for search (hex)\n");
+  printf(" -rg: Range of keys for search in format start,end (hex)\n");
   printf(" -keysPerThread keyCount: Number of keys to check per thread (default: 500000000)\n");
   exit(0);
 
@@ -544,6 +545,18 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[a], "-rangeEnd") == 0) {
       a++;
       rangeEnd = string(argv[a]);
+      a++;
+    } else if (strcmp(argv[a], "-rg") == 0) {
+      a++;
+      string range = string(argv[a]);
+      size_t pos = range.find(",");
+      if (pos != string::npos) {
+        rangeStart = range.substr(0, pos);
+        rangeEnd = range.substr(pos + 1);
+      } else {
+        printf("Error: Invalid range format. Use -rg start,end\n");
+        exit(-1);
+      }
       a++;
     } else if (strcmp(argv[a], "-keysPerThread") == 0 || strcmp(argv[a], "-kt") == 0) {
       if (a < argc - 1) {

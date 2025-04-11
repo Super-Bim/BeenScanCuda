@@ -1543,13 +1543,6 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       g.SetPrefix(usedPrefix);
   }
 
-  // Usar o método apropriado para gerar as chaves iniciais
-  if (useKeyRange) {
-    getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-  } else {
-    getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-  }
-
   ok = g.SetKeys(p);
   ph->rekeyRequest = false;
 
@@ -1559,28 +1552,41 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
   while (ok && !endOfSearch) {
 
     if (ph->rekeyRequest) {
-      getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+      if (useKeyRange) {
+        getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+      } else {
+        getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+      }
       ok = g.SetKeys(p);
       ph->rekeyRequest = false;
     }
 
-    // Call kernel
+    // Call kernel para 1 passo apenas (liberando memória após cada passo)
     ok = g.Launch(found);
 
     for(int i=0;i<(int)found.size() && !endOfSearch;i++) {
-
       ITEM it = found[i];
       checkAddr(*(prefix_t *)(it.hash), it.hash, keys[it.thId], it.incr, it.endo, it.mode);
-
     }
 
     if (ok) {
-      for (int i = 0; i < nbThread; i++) {
-        keys[i].Add((uint64_t)STEP_SIZE);
-      }
-      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
-    }
+      // Incrementar contador só quando usar todo o GRP_SIZE
+      counters[thId] += 6ULL * GRP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
 
+      // Verificar se atingiu o número máximo de chaves por thread
+      if (useKeyRange && counters[thId] >= keysPerThread * nbThread) {
+        // Se atingiu o limite, sortear novas chaves iniciais
+        getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+        ok = g.SetKeys(p);
+        counters[thId] = 0;
+        printf("GPU Thread #%d: Reiniciando com novas chaves iniciais\n", thId);
+      } else {
+        // Incrementar as chaves para o próximo passo
+        for (int i = 0; i < nbThread; i++) {
+          keys[i].Add((uint64_t)GRP_SIZE);
+        }
+      }
+    }
   }
 
   delete[] keys;
@@ -1592,7 +1598,6 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
 #endif
 
   ph->isRunning = false;
-
 }
 
 // ----------------------------------------------------------------------------
@@ -1819,11 +1824,28 @@ void VanitySearch::getRangeGPUStartingKeys(int thId, int groupSize, int nbThread
   rangeSize.Set(&rangeEnd);
   rangeSize.Sub(&rangeStart);
 
+  // Usar timestamp como parte da semente aleatória
+  Timer::SleepMillis(thId + 1); // Pequeno atraso para garantir timestamps diferentes
+  
   // Para cada thread, sorteia um ponto aleatório dentro do range
   for (int i = 0; i < nbThread; i++) {
-    // Gerar um número aleatório no range
+    // Gerar um número aleatório no range usando um método mais aleatório
     Int randomOffset;
-    randomOffset.Rand(rangeSize.GetBitLength());
+    
+    // Usar tempo e posição como semente para aumentar a aleatoriedade
+    unsigned char entropy[32];
+    unsigned long long seed = (unsigned long long)time(NULL) + thId * 1000 + i;
+    
+    // Preencher o array de entropia com bytes pseudoaleatórios derivados do seed
+    for(int j = 0; j < 32; j++) {
+      seed = 6364136223846793005ULL * seed + 1;
+      entropy[j] = (unsigned char)(seed >> 56);
+    }
+    
+    // Converter para um Int usando SetInt8 que aceita bytes
+    randomOffset.SetInt8(entropy, 32);
+    
+    // Garantir que o offset esteja dentro do range
     randomOffset.Mod(&rangeSize);
 
     // Definir a chave como rangeStart + offset aleatório
