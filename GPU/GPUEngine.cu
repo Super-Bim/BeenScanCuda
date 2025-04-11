@@ -187,7 +187,7 @@ GPUEngine::GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_
   this->rekey = rekey;
   initialised = false;
   this->nbThread = nbThreadGroup * nbThreadPerGroup;
-  this->maxStep = 0xFFFFFFFFFFFFFFFFULL; // Valor padrão (máximo)
+  this->maxStep = 0; // Sem limite por padrão
   outputSize = (maxFound + 1) * ITEM_SIZE;
   lostWarning = false;
   hasPattern = false;
@@ -226,7 +226,6 @@ GPUEngine::GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_
   this->nbThread = nbThreadGroup * nbThreadPerGroup;
   this->maxFound = maxFound;
   this->outputSize = (maxFound*ITEM_SIZE + 4);
-  this->maxStep = 0; // Por padrão, sem limite
 
   char tmp[512];
   sprintf(tmp,"GPU #%d %s (%dx%d cores) Grid(%dx%d)",
@@ -475,6 +474,9 @@ bool GPUEngine::callKernel() {
   // Reset nbFound
   cudaMemset(outputPrefix, 0, 4);
   
+  // Sincronizar antes de chamar o kernel para garantir limpeza adequada
+  cudaDeviceSynchronize();
+  
   // Em sistemas Linux, gerenciar memória antes de chamar o kernel
   #ifndef _WIN64
   ManageLinuxMemory();
@@ -514,17 +516,27 @@ bool GPUEngine::callKernel() {
 
   }
 
+  // Verificar erros após execução do kernel
   cudaError_t err = cudaGetLastError();
   if (err != cudaSuccess) {
     printf("GPUEngine: Kernel: %s\n", cudaGetErrorString(err));
     
     // Em sistemas Linux, tentar recuperar de erros
     #ifndef _WIN64
+    // Pausa breve para permitir que o sistema se reorganize
+    Timer::SleepMillis(10);
+    // Tentar recuperar memória
     ManageLinuxMemory();
     #endif
     
     return false;
   }
+  
+  // Indicar ao sistema que finalizamos o trabalho atual e estamos prontos para o próximo
+  #ifndef _WIN64
+  // Sincronizar para garantir que kernel foi concluído, mas sem bloquear desnecessariamente
+  cudaStreamQuery(0);
+  #endif
   
   return true;
 }
@@ -571,6 +583,11 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound, bool spinWait) {
 
   prefixFound.clear();
 
+  // Sincronizar o dispositivo antes de obter resultados (especialmente importante no Linux)
+  #ifndef _WIN64
+  cudaDeviceSynchronize();
+  #endif
+
   // Get the result
   if(spinWait) {
     cudaMemcpy(outputPrefixPinned, outputPrefix, outputSize, cudaMemcpyDeviceToHost);
@@ -591,7 +608,9 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound, bool spinWait) {
   if (err != cudaSuccess) {
     printf("GPUEngine: Launch: %s\n", cudaGetErrorString(err));
     // Tentar recuperar o estado da memória
+    #ifndef _WIN64
     ManageLinuxMemory();
+    #endif
     return false;
   }
 
@@ -603,7 +622,9 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound, bool spinWait) {
     printf("GPUEngine: Número suspeito de correspondências (%u). Possíveis falsos positivos, ignorando resultados.\n", nbFound);
     
     // Usar gerenciamento de memória específico para Linux
+    #ifndef _WIN64
     ManageLinuxMemory();
+    #endif
     
     return callKernel(); // Chamar kernel novamente
   }
@@ -634,11 +655,16 @@ bool GPUEngine::Launch(std::vector<ITEM> &prefixFound, bool spinWait) {
     }
   }
 
-  // Gerenciar memória no Linux após o processamento
+  // Ponto crítico: sincronizar completamente antes de iniciar o próximo loop
   #ifndef _WIN64
+  cudaDeviceSynchronize();
+  // Liberar recursos não utilizados entre loops
   ManageLinuxMemory();
+  // Pausa curta para garantir que recursos do sistema operacional foram liberados
+  Timer::SleepMillis(1);
   #endif
 
+  // Reiniciar o kernel com estado limpo
   return callKernel();
 }
 
@@ -884,7 +910,24 @@ bool GPUEngine::Check(Secp256K1 *secp) {
 
 void GPUEngine::SetMaxStep(uint64_t maxStep) {
   this->maxStep = maxStep;
-  printf("GPUEngine: Maximum keys per thread set to %llu\n", (unsigned long long)maxStep);
+  
+  // Calcular quantos passos por thread serão necessários
+  uint32_t stepsPerThread = 0;
+  if (maxStep > 0) {
+    // Converter o limite para passos por thread (considerando o tamanho do grupo)
+    stepsPerThread = (uint32_t)(maxStep / GRP_SIZE);
+    if (stepsPerThread > 255) stepsPerThread = 255; // Limitar ao máximo de 8 bits
+  }
+  
+  // Usar os 8 bits mais significativos do valor maxFound para passar o limite para o kernel
+  // Isso será interpretado pelo kernel em GPUCompute.h
+  if (stepsPerThread > 0) {
+    this->maxFound = (this->maxFound & 0x00FFFFFF) | (stepsPerThread << 24);
+    printf("GPUEngine: Limite de chaves por thread configurado para %llu (passos: %u)\n", 
+          (unsigned long long)maxStep, stepsPerThread);
+  } else {
+    printf("GPUEngine: Sem limite de chaves por thread\n");
+  }
 }
 
 uint64_t GPUEngine::GetMaxStep() {
@@ -894,30 +937,61 @@ uint64_t GPUEngine::GetMaxStep() {
 // Função específica para gerenciar memória em sistemas Linux
 bool GPUEngine::ManageLinuxMemory() {
 #ifndef _WIN64
-  // Em sistemas Linux, tenta liberar recursos temporários não utilizados
+  bool success = true;
+  
+  // 1. Sincronizar o dispositivo primeiro
   cudaError_t err = cudaDeviceSynchronize();
   if (err != cudaSuccess) {
     printf("GPUEngine: Erro ao sincronizar dispositivo: %s\n", cudaGetErrorString(err));
-    return false;
+    success = false;
   }
   
-  // Truque para liberar memória que pode estar retida pelo driver CUDA
-  err = cudaFree(0);
+  // 2. Limpar estado de erro CUDA
+  cudaGetLastError();
+  
+  // 3. Em sistemas Linux, liberar e realocar recursos críticos pode ajudar
+  // Gerenciar CPU
+  #ifdef __linux__
+    // Liberar agendamento da CPU por um momento
+    usleep(100);
+    
+    // Em sistemas com memória limitada, forçar sync do sistema de arquivos
+    // pode ajudar a liberar buffers de cache do sistema operacional
+    sync();
+    
+    // Permitir que o sistema operacional organize a memória
+    usleep(100);
+  #endif
+  
+  // 4. Verificar espaço na memória da GPU
+  size_t free, total;
+  err = cudaMemGetInfo(&free, &total);
   if (err != cudaSuccess) {
-    printf("GPUEngine: Erro ao liberar memória: %s\n", cudaGetErrorString(err));
-    return false;
+    printf("GPUEngine: Erro ao recuperar informações de memória: %s\n", cudaGetErrorString(err));
+    success = false;
+  } else {
+    // Verificar se temos memória suficiente
+    double percentFree = (double)free / (double)total * 100.0;
+    if (percentFree < 10.0) {
+      printf("GPUEngine: Alerta - Pouca memória disponível na GPU: %.1f%%\n", percentFree);
+      
+      // Em casos críticos, podemos try/catch resetar o dispositivo
+      // mas isso é caro e deve ser evitado exceto em casos extremos
+      if (percentFree < 5.0) {
+        #ifdef __linux__
+        printf("GPUEngine: Tentando liberar recursos da GPU...\n");
+        // Reset mais agressivo em sistemas Linux
+        cudaDeviceReset();
+        usleep(1000000); // 1 segundo para recuperação
+        cudaSetDevice(0); // Voltar ao dispositivo padrão
+        #endif
+      }
+    }
   }
   
-  // Limpar buffer de saída
-  err = cudaMemset(outputPrefix, 0, 4);
-  if (err != cudaSuccess) {
-    printf("GPUEngine: Erro ao limpar buffer de saída: %s\n", cudaGetErrorString(err));
-    return false;
-  }
-  
-  return true;
+  return success;
 #else
-  // Em sistemas Windows, isso não é necessário
+  // Em sistemas Windows, retornamos verdadeiro mas não fazemos nada especial
   return true;
 #endif
 }

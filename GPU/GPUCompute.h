@@ -278,9 +278,16 @@ __device__ void ComputeKeys(uint32_t mode, uint64_t *startx, uint64_t *starty,
   }
 
   // Número máximo de passos que este kernel vai executar
-  // Se j*GRP_SIZE >= maxStep (um valor definido pelo host), o kernel termina
-  uint32_t maxStepLimit = (uint32_t)((*out) >> 24);
-  uint32_t numSteps = maxStepLimit > 0 ? maxStepLimit : (STEP_SIZE / GRP_SIZE);
+  // Obtém diretamente o limite de passos, sem usar bits do buffer de saída
+  uint32_t numSteps = STEP_SIZE / GRP_SIZE;
+  
+  // Se um limite foi definido pelo host (maxStep > 0), calcular o número de passos
+  if (maxFound > 0x1000000) { // Use os 8 bits mais significativos para armazenar informações de limite
+    uint32_t maxStepLimit = (maxFound >> 24);
+    if (maxStepLimit > 0) {
+      numSteps = min(numSteps, maxStepLimit);
+    }
+  }
 
   for (uint32_t j = 0; j < numSteps; j++) {
 
@@ -414,9 +421,16 @@ __device__ void ComputeKeysP2SH(uint32_t mode, uint64_t *startx, uint64_t *start
   }
 
   // Número máximo de passos que este kernel vai executar
-  // Se j*GRP_SIZE >= maxStep (um valor definido pelo host), o kernel termina
-  uint32_t maxStepLimit = (uint32_t)((*out) >> 24);
-  uint32_t numSteps = maxStepLimit > 0 ? maxStepLimit : (STEP_SIZE / GRP_SIZE);
+  // Obtém diretamente o limite de passos, sem usar bits do buffer de saída
+  uint32_t numSteps = STEP_SIZE / GRP_SIZE;
+  
+  // Se um limite foi definido pelo host (maxStep > 0), calcular o número de passos
+  if (maxFound > 0x1000000) { // Use os 8 bits mais significativos para armazenar informações de limite
+    uint32_t maxStepLimit = (maxFound >> 24);
+    if (maxStepLimit > 0) {
+      numSteps = min(numSteps, maxStepLimit);
+    }
+  }
 
   for (uint32_t j = 0; j < numSteps; j++) {
 
@@ -560,9 +574,16 @@ __device__ void ComputeKeysComp(uint64_t *startx, uint64_t *starty, prefix_t *sP
   Load256(py, sy);
 
   // Número máximo de passos que este kernel vai executar
-  // Se j*GRP_SIZE >= maxStep (um valor definido pelo host), o kernel termina
-  uint32_t maxStepLimit = (uint32_t)((*out) >> 24);
-  uint32_t numSteps = maxStepLimit > 0 ? maxStepLimit : (STEP_SIZE / GRP_SIZE);
+  // Obtém diretamente o limite de passos, sem usar bits do buffer de saída
+  uint32_t numSteps = STEP_SIZE / GRP_SIZE;
+  
+  // Se um limite foi definido pelo host (maxStep > 0), calcular o número de passos
+  if (maxFound > 0x1000000) { // Use os 8 bits mais significativos para armazenar informações de limite
+    uint32_t maxStepLimit = (maxFound >> 24);
+    if (maxStepLimit > 0) {
+      numSteps = min(numSteps, maxStepLimit);
+    }
+  }
 
   for (uint32_t j = 0; j < numSteps; j++) {
 
