@@ -630,7 +630,8 @@ int main(int argc, char* argv[]) {
   #endif
 
   // If a starting pubKey is specified, check it
-  if (!startPuKey.isZero()) {
+  bool startPubKeySpecified = !startPuKey.isZero();
+  if (startPubKeySpecified) {
     prefix = prefix_list[0];
     for(int i=0;i<(int)prefix.length();i++)
       prefix[i] = toupper(prefix[i]);
@@ -640,11 +641,10 @@ int main(int argc, char* argv[]) {
       else
         printf("Warning, compressed specified pubkey, but searching for uncompressed addresses\n");
     }
-    startPubKeySpecified = true;
   }
 
   // If a starting public key is specified, force the search mode according to the key
-  if (!startPuKey.isZero()) {
+  if (startPubKeySpecified) {
     searchMode = (startPubKeyCompressed)?SEARCH_COMPRESSED:SEARCH_UNCOMPRESSED;
   }
 
