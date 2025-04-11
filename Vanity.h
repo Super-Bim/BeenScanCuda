@@ -22,24 +22,13 @@
 #include <vector>
 #include "SECP256k1.h"
 #include "GPU/GPUEngine.h"
-
 #ifdef WIN64
 #include <Windows.h>
 #endif
 
 #define CPU_GRP_SIZE 1024
-#define STEP_SIZE 1024
 
 class VanitySearch;
-
-// Declaração de funções para threads
-#ifdef WIN64
-DWORD WINAPI _FindKey(LPVOID lpParam);
-DWORD WINAPI _FindKeyGPU(LPVOID lpParam);
-#else
-void *_FindKey(void *lpParam);
-void *_FindKeyGPU(void *lpParam);
-#endif
 
 typedef struct {
 
@@ -82,15 +71,10 @@ class VanitySearch {
 public:
 
   VanitySearch(Secp256K1 *secp, std::vector<std::string> &prefix, std::string seed, int searchMode,
-               bool useGpu, bool stop, std::string outputFile, bool useSSE, uint32_t maxFound, uint64_t rekey,
-               bool caseSensitive, Point &startPubKey, bool paranoiacSeed, 
-               Int *rangeStart = NULL, Int *rangeEnd = NULL, uint64_t keysPerCore = 0);
+               bool useGpu,bool stop,std::string outputFile, bool useSSE,uint32_t maxFound,uint64_t rekey,
+               bool caseSensitive,Point &startPubKey,bool paranoiacSeed);
 
-  ~VanitySearch() {
-    // Adicionar cleanup seguro se necessário
-  }
-
-  void Search(int nbThread, std::vector<int> gpuId, std::vector<int> gridSize);
+  void Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
   void FindKeyCPU(TH_PARAM *p);
   void FindKeyGPU(TH_PARAM *p);
 
@@ -120,7 +104,6 @@ private:
   void getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p);
   void enumCaseUnsentivePrefix(std::string s, std::vector<std::string> &list);
   bool prefixMatch(char *prefix, char *addr);
-  Int getRangeKey();
 
   Secp256K1 *secp;
   Int startKey;
@@ -157,15 +140,10 @@ private:
   Int beta2;
   Int lambda2;
 
-  // Range search parameters
-  bool useRangeSearch;
-  Int rangeStart;
-  Int rangeEnd;
-  Int rangeWidth;
-  uint64_t keysPerCore;
-
 #ifdef WIN64
   HANDLE ghMutex;
+#else
+  pthread_mutex_t  ghMutex;
 #endif
 
 };

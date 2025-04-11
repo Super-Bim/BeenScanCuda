@@ -29,8 +29,6 @@
 #include <algorithm>
 #ifndef WIN64
 #include <pthread.h>
-#include <unistd.h>
-#include <sys/syscall.h>
 #endif
 
 using namespace std;
@@ -38,21 +36,13 @@ using namespace std;
 Point Gn[CPU_GRP_SIZE / 2];
 Point _2Gn;
 
-#ifdef WIN64
-HANDLE ghMutex;
-#else
-pthread_mutex_t ghMutex = PTHREAD_MUTEX_INITIALIZER;
-#endif
-
 // ----------------------------------------------------------------------------
 
-VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, string seed, int searchMode,
+VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,string seed,int searchMode,
                            bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,
-                           uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed,
-                           Int *rangeStart, Int *rangeEnd, uint64_t keysPerCore)
+                           uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed)
   :inputPrefixes(inputPrefixes) {
 
-  // Inicializa valores padrão
   this->secp = secp;
   this->searchMode = searchMode;
   this->useGpu = useGpu;
@@ -67,36 +57,6 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
   this->hasPattern = false;
   this->caseSensitive = caseSensitive;
   this->startPubKeySpecified = !startPubKey.isZero();
-  
-  // Initialize range search parameters
-  this->rangeStart.SetInt32(0);
-  this->rangeEnd.SetInt32(0);
-  this->rangeWidth.SetInt32(0);
-  this->keysPerCore = 0;
-  
-  // Defina useRangeSearch apenas se os ponteiros de range forem válidos
-  this->useRangeSearch = (rangeStart != NULL && rangeEnd != NULL);
-  
-  if (this->useRangeSearch) {
-    this->rangeStart.Set(rangeStart);
-    this->rangeEnd.Set(rangeEnd);
-    this->rangeWidth.Set(&this->rangeEnd);
-    this->rangeWidth.Sub(&this->rangeStart);
-    
-    // Verifica se o range é válido
-    if (this->rangeWidth.IsZero() || this->rangeWidth.IsNegative()) {
-      printf("Error: Invalid range (end must be greater than start)\n");
-      exit(-1);
-    }
-    
-    this->keysPerCore = (keysPerCore > 0) ? keysPerCore : STEP_SIZE;
-    printf("Range search enabled: [0x%s -> 0x%s]\n", this->rangeStart.GetBase16().c_str(), this->rangeEnd.GetBase16().c_str());
-#ifdef WIN64
-    printf("Keys per core: %llu\n", this->keysPerCore);
-#else
-    printf("Keys per core: %lu\n", (unsigned long)this->keysPerCore);
-#endif
-  }
 
   lastRekey = 0;
   prefixes.clear();
@@ -1303,58 +1263,22 @@ void VanitySearch::checkAddressesSSE(bool compressed,Int key, int i, Point p1, P
 }
 
 // ----------------------------------------------------------------------------
-void VanitySearch::getCPUStartingKey(int thId, Int& key, Point& startP) {
+void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
 
   if (rekey > 0) {
-    // Modo rekey: simplesmente gera uma chave aleatória
     key.Rand(256);
-  } else if (useRangeSearch) {
-    // Modo range search: usa getRangeKey (que já tem as verificações necessárias)
-    key = getRangeKey();
-    
-    // Adiciona um offset baseado no thread ID se keysPerCore estiver definido
-    if (keysPerCore > 0) {
-      // Criar o offset para este thread
-      Int threadOffset;
-      threadOffset.SetInt32(thId);
-      threadOffset.Mult(keysPerCore);
-      
-      // Adicionar à chave
-      key.Add(&threadOffset);
-      
-      // Verificar se ultrapassou o range
-      Int width;
-      width.Set(&rangeEnd);
-      width.Sub(&rangeStart);
-      
-      if (key.IsGreater(&rangeEnd)) {
-        // Se ultrapassou, voltar para o início + offset
-        key.Set(&rangeStart);
-        
-        // Calculamos quanto ultrapassou e usamos o módulo
-        Int exceededBy;
-        exceededBy.Set(&threadOffset);
-        exceededBy.Mod(&width);
-        
-        key.Add(&exceededBy);
-      }
-    }
   } else {
-    // Modo normal: usa a startKey + offset para o thread
     key.Set(&startKey);
     Int off((int64_t)thId);
     off.ShiftL(64);
     key.Add(&off);
   }
-  
-  // Calcula a chave do meio do grupo e o ponto público correspondente
   Int km(&key);
   km.Add((uint64_t)CPU_GRP_SIZE / 2);
   startP = secp->ComputePublicKey(&km);
-  
-  // Adiciona a startPubKey se especificada
-  if (startPubKeySpecified)
-    startP = secp->AddDirect(startP, startPubKey);
+  if(startPubKeySpecified)
+   startP = secp->AddDirect(startP,startPubKey);
+
 }
 
 void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
@@ -1362,7 +1286,6 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
   // Global init
   int thId = ph->threadId;
   counters[thId] = 0;
-  uint64_t keysProcessed = 0;
 
   // CPU Thread
   IntGroup *grp = new IntGroup(CPU_GRP_SIZE/2+1);
@@ -1391,10 +1314,6 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
     if (ph->rekeyRequest) {
       getCPUStartingKey(thId, key, startP);
       ph->rekeyRequest = false;
-      // Reset contador de chaves processadas
-      if (useRangeSearch && keysPerCore > 0) {
-        keysProcessed = 0;
-      }
     }
 
     // Fill group
@@ -1491,6 +1410,22 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
     pp.y.ModSub(&_2Gn.y);
     startP = pp;
 
+#if 0
+    // Check
+    {
+      bool wrong = false;
+      Point p0 = secp.ComputePublicKey(&key);
+      for (int i = 0; i < CPU_GRP_SIZE; i++) {
+        if (!p0.equals(pts[i])) {
+          wrong = true;
+          printf("[%d] wrong point\n",i);
+        }
+        p0 = secp.NextKey(p0);
+      }
+      if(wrong) exit(0);
+    }
+#endif
+
     // Check addresses
     if (useSSE) {
 
@@ -1534,17 +1469,6 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
 
     key.Add((uint64_t)CPU_GRP_SIZE);
     counters[thId]+= 6*CPU_GRP_SIZE; // Point + endo #1 + endo #2 + Symetric point + endo #1 + endo #2
-    
-    // Se estiver usando range search com limite de chaves por core, verifica se atingiu o limite
-    if (useRangeSearch && keysPerCore > 0) {
-      keysProcessed += CPU_GRP_SIZE;
-      
-      // Se atingiu o limite de chaves, reinicia com uma nova chave aleatória dentro do range
-      if (keysProcessed >= keysPerCore) {
-        getCPUStartingKey(thId, key, startP);
-        keysProcessed = 0;
-      }
-    }
 
   }
 
@@ -1556,44 +1480,10 @@ void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
 
 void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p) {
 
-  // Calculamos uma largura de range (se estiver usando range search)
-  Int width;
-  if (useRangeSearch) {
-    width.Set(&rangeEnd);
-    width.Sub(&rangeStart);
-  }
-
   for (int i = 0; i < nbThread; i++) {
     if (rekey > 0) {
-      // Modo rekey: simplesmente gera uma chave aleatória
       keys[i].Rand(256);
-    } else if (useRangeSearch) {
-      // Modo range search: usa getRangeKey (que já tem as verificações necessárias)
-      keys[i] = getRangeKey();
-      
-      // Adiciona um offset baseado no thread ID e no index se keysPerCore estiver definido
-      if (keysPerCore > 0) {
-        // Criar o offset para esta thread da GPU
-        Int threadOffset;
-        threadOffset.SetInt32(0);
-        uint64_t offset = (uint64_t)(thId * nbThread * keysPerCore + i * keysPerCore);
-        threadOffset.Add(offset);
-        
-        // Adicionar à chave
-        keys[i].Add(&threadOffset);
-        
-        // Verificar se ultrapassou o range
-        if (!width.IsZero() && keys[i].IsGreater(&rangeEnd)) {
-          // Se ultrapassou, voltar para o início + offset
-          keys[i].Set(&rangeStart);
-          
-          // Calculamos quanto ultrapassou e usamos o módulo
-          threadOffset.Mod(&width);
-          keys[i].Add(&threadOffset);
-        }
-      }
     } else {
-      // Modo normal: usa a startKey + offset para a thread
       keys[i].Set(&startKey);
       Int offT((uint64_t)i);
       offT.ShiftL(80);
@@ -1602,18 +1492,14 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
       keys[i].Add(&offT);
       keys[i].Add(&offG);
     }
-    
-    // Adiciona metade do tamanho do grupo à chave inicial
     Int k(keys + i);
+    // Starting key is at the middle of the group
     k.Add((uint64_t)(groupSize / 2));
-    
-    // Calcula a chave pública correspondente
     p[i] = secp->ComputePublicKey(&k);
-    
-    // Adiciona a startPubKey se especificada
     if (startPubKeySpecified)
       p[i] = secp->AddDirect(p[i], startPubKey);
   }
+
 }
 
 void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
@@ -1629,8 +1515,6 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
   Point *p = new Point[nbThread];
   Int *keys = new Int[nbThread];
   vector<ITEM> found;
-  uint64_t *keysProcessed = new uint64_t[nbThread];
-  memset(keysProcessed, 0, sizeof(uint64_t) * nbThread);
 
   printf("GPU: %s\n",g.deviceName.c_str());
 
@@ -1662,10 +1546,6 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
       ok = g.SetKeys(p);
       ph->rekeyRequest = false;
-      // Reset contador de chaves processadas por thread
-      if (useRangeSearch && keysPerCore > 0) {
-        memset(keysProcessed, 0, sizeof(uint64_t) * nbThread);
-      }
     }
 
     // Call kernel
@@ -1679,67 +1559,16 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
     }
 
     if (ok) {
-      // Calcula largura do range se necessário
-      Int width;
-      if (useRangeSearch) {
-        width.Set(&rangeEnd);
-        width.Sub(&rangeStart);
-      }
-      
       for (int i = 0; i < nbThread; i++) {
-        // Sempre incrementa a chave pelo tamanho do passo
         keys[i].Add((uint64_t)STEP_SIZE);
-        
-        // Se estiver usando range search com limite de chaves por core, verifica se atingiu o limite
-        if (useRangeSearch && keysPerCore > 0) {
-          keysProcessed[i] += STEP_SIZE;
-          
-          // Se atingiu o limite de chaves, reinicia com uma nova chave aleatória dentro do range
-          if (keysProcessed[i] >= keysPerCore) {
-            // Obtem uma nova chave dentro do range
-            keys[i] = getRangeKey();
-            
-            // Adiciona offset para o meio do grupo
-            Int k(keys + i);
-            k.Add((uint64_t)(g.GetGroupSize() / 2));
-            
-            // Calcula o ponto público correspondente
-            p[i] = secp->ComputePublicKey(&k);
-            if (startPubKeySpecified)
-              p[i] = secp->AddDirect(p[i], startPubKey);
-            
-            // Reset do contador para esta thread
-            keysProcessed[i] = 0;
-          }
-        }
       }
-      
-      // Redefine as chaves na GPU se alguma thread precisou reiniciar
-      if (useRangeSearch && keysPerCore > 0) {
-        bool needReset = false;
-        
-        // Verifica se alguma thread precisou reiniciar
-        for (int i = 0; i < nbThread; i++) {
-          if (keysProcessed[i] == 0) {
-            needReset = true;
-            break;
-          }
-        }
-        
-        // Reseta todas as chaves na GPU se necessário
-        if (needReset) {
-          ok = g.SetKeys(p);
-        }
-      }
-      
-      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point + endo1 + endo2 + symetrics
+      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
     }
 
   }
 
   delete[] keys;
   delete[] p;
-  delete[] keysProcessed;
 
 #else
   ph->hasStarted = true;
@@ -1822,11 +1651,6 @@ void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
 
   printf("Number of CPU thread: %d\n", nbCPUThread);
 
-#ifdef WIN64
-  // Criar mutex uma vez no início
-  ghMutex = CreateMutex(NULL, FALSE, NULL);
-#endif
-
   TH_PARAM *params = (TH_PARAM *)malloc((nbCPUThread + nbGPUThread) * sizeof(TH_PARAM));
   memset(params,0,(nbCPUThread + nbGPUThread) * sizeof(TH_PARAM));
 
@@ -1839,9 +1663,11 @@ void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
 #ifdef WIN64
     DWORD thread_id;
     CreateThread(NULL, 0, _FindKey, (void*)(params+i), 0, &thread_id);
+    ghMutex = CreateMutex(NULL, FALSE, NULL);
 #else
     pthread_t thread_id;
     pthread_create(&thread_id, NULL, &_FindKey, (void*)(params+i));
+    ghMutex = PTHREAD_MUTEX_INITIALIZER;
 #endif
   }
 
@@ -1861,6 +1687,10 @@ void VanitySearch::Search(int nbThread,std::vector<int> gpuId,std::vector<int> g
     pthread_create(&thread_id, NULL, &_FindKeyGPU, (void*)(params+(nbCPUThread+i)));
 #endif
   }
+
+#ifndef WIN64
+  setvbuf(stdout, NULL, _IONBF, 0);
+#endif
 
   uint64_t lastCount = 0;
   uint64_t gpuCount = 0;
@@ -1953,39 +1783,4 @@ string VanitySearch::GetHex(vector<unsigned char> &buffer) {
 
   return ret;
 
-}
-
-// ----------------------------------------------------------------------------
-
-Int VanitySearch::getRangeKey() {
-  // Gera uma chave aleatória dentro do range [rangeStart, rangeEnd]
-  Int key;
-  
-  if (!useRangeSearch) {
-    // Se o range não estiver definido, gera uma chave aleatória completa (256 bits)
-    key.Rand(256);
-    return key;
-  }
-  
-  // Certifique-se de que temos um intervalo válido
-  Int width;
-  width.Set(&rangeEnd);
-  width.Sub(&rangeStart);
-  
-  if (width.IsZero() || width.IsNegative()) {
-    // Intervalo inválido, usar uma chave aleatória
-    key.Rand(256);
-    return key;
-  }
-  
-  // Gerar um offset aleatório dentro do range
-  Int offset;
-  offset.Rand(256);
-  offset.Mod(&width);  // offset = random mod width
-  
-  // key = rangeStart + offset
-  key.Set(&rangeStart);
-  key.Add(&offset);
-  
-  return key;
 }

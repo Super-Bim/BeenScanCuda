@@ -33,34 +33,35 @@ using namespace std;
 
 void printUsage() {
 
-  printf("VanitySearch [-check] [-v] [-u] [-b] [-c] [-gpu] [-stop] [-i inputfile]\n");
-  printf("             [-gpuId gpuId1[,gpuId2,...]] [-g gridSize1[,gridSize2,...]]\n");
+  printf("VanitySeacrh [-check] [-v] [-u] [-b] [-c] [-gpu] [-stop] [-i inputfile]\n");
+  printf("             [-gpuId gpuId1[,gpuId2,...]] [-g g1x,g1y,[,g2x,g2y,...]]\n");
   printf("             [-o outputfile] [-m maxFound] [-ps seed] [-s seed] [-t nbThread]\n");
-  printf("             [-nosse] [-r rekey] [-sp startPub] [-kp]\n");
-  printf("             [-range rangeStart,rangeEnd] [-keys keysPerCore] <pattern>\n\n");
-  printf(" -v                    : Print version\n");
-  printf(" -u                    : Search uncompressed addresses\n");
-  printf(" -b                    : Search both uncompressed or compressed addresses\n");
-  printf(" -c                    : Case unsensitive search\n");
-  printf(" -gpu                  : Enable GPU calculation\n");
-  printf(" -stop                 : Stop when all prefixes have been found\n");
-  printf(" -i inputfile          : Get list of prefixes to search from specified file\n");
-  printf(" -o outputfile         : Output results to the specified file\n");
-  printf(" -gpuId gpuId1,gpuId2  : List of GPU(s) to use, default is 0\n");
-  printf(" -g gridSize1,gridSize2: Specify GPU(s) kernel gridsize, default is 8*(MP number),128\n");
-  printf(" -m maxFound           : Specify max number of prefixes found per kernel call\n");
-  printf(" -ps seed              : Specify a personal seed for key generation\n");
-  printf(" -s seed               : Specify a seed for key generation\n");
-  printf(" -t nbThread           : Specify number of CPU thread, default is number of core\n");
-  printf(" -nosse                : Disable SSE hash function\n");
-  printf(" -l                    : List cuda enabled devices\n");
-  printf(" -check                : Check CPU and GPU kernel vs CPU\n");
-  printf(" -sp startPub          : Start with a specified public key for private key recovery\n");
-  printf(" -kp                   : Generate key pair\n");
-  printf(" -rp privKey           : Reconstruct a public key from a private key and compute hashes\n");
-  printf(" -r rekey              : Rekey interval in MegaKey, default is disabled\n");
-  printf(" -range start,end      : Range of keys to search (in hex)\n");
-  printf(" -keys num             : Number of keys to process per GPU core\n");
+  printf("             [-nosse] [-r rekey] [-check] [-kp] [-sp startPubKey]\n");
+  printf("             [-rp privkey partialkeyfile] [prefix]\n\n");
+  printf(" prefix: prefix to search (Can contains wildcard '?' or '*')\n");
+  printf(" -v: Print version\n");
+  printf(" -u: Search uncompressed addresses\n");
+  printf(" -b: Search both uncompressed or compressed addresses\n");
+  printf(" -c: Case unsensitive search\n");
+  printf(" -gpu: Enable gpu calculation\n");
+  printf(" -stop: Stop when all prefixes are found\n");
+  printf(" -i inputfile: Get list of prefixes to search from specified file\n");
+  printf(" -o outputfile: Output results to the specified file\n");
+  printf(" -gpu gpuId1,gpuId2,...: List of GPU(s) to use, default is 0\n");
+  printf(" -g g1x,g1y,g2x,g2y, ...: Specify GPU(s) kernel gridsize, default is 8*(MP number),128\n");
+  printf(" -m: Specify maximun number of prefixes found by each kernel call\n");
+  printf(" -s seed: Specify a seed for the base key, default is random\n");
+  printf(" -ps seed: Specify a seed concatened with a crypto secure random seed\n");
+  printf(" -t threadNumber: Specify number of CPU thread, default is number of core\n");
+  printf(" -nosse: Disable SSE hash function\n");
+  printf(" -l: List cuda enabled devices\n");
+  printf(" -check: Check CPU and GPU kernel vs CPU\n");
+  printf(" -cp privKey: Compute public key (privKey in hex hormat)\n");
+  printf(" -ca pubKey: Compute address (pubKey in hex hormat)\n");
+  printf(" -kp: Generate key pair\n");
+  printf(" -rp privkey partialkeyfile: Reconstruct final private key(s) from partial key(s) info.\n");
+  printf(" -sp startPubKey: Start the search with a pubKey (for private key splitting)\n");
+  printf(" -r rekey: Rekey interval in MegaKey, default is disabled\n");
   exit(0);
 
 }
@@ -399,9 +400,6 @@ int main(int argc, char* argv[]) {
   bool startPubKeyCompressed;
   bool caseSensitive = true;
   bool paranoiacSeed = false;
-  Int *rangeStart = NULL;
-  Int *rangeEnd = NULL;
-  uint64_t keysPerCore = 0;
 
   while (a < argc) {
 
@@ -421,91 +419,6 @@ int main(int argc, char* argv[]) {
     } else if (strcmp(argv[a], "-v") == 0) {
       printf("%s\n",RELEASE);
       exit(0);
-    } else if (strcmp(argv[a], "-range") == 0) {
-      // Processa o parâmetro range - formato: -range start,end (em hex)
-      a++;
-      if (a >= argc) {
-        printf("Error: -range requires an argument\n");
-        exit(-1);
-      }
-      
-      vector<string> rangeValues;
-      string rangeStr = string(argv[a]);
-      size_t pos = 0;
-      string token;
-      
-      // Divide a string em start,end
-      while ((pos = rangeStr.find(",")) != string::npos) {
-        token = rangeStr.substr(0, pos);
-        rangeValues.push_back(token);
-        rangeStr.erase(0, pos + 1);
-      }
-      rangeValues.push_back(rangeStr); // Adiciona o último valor
-      
-      if (rangeValues.size() != 2) {
-        printf("Invalid range format. Use: -range start,end (in hex)\n");
-        exit(-1);
-      }
-      
-      // Converte os valores para Int
-      rangeStart = new Int();
-      rangeEnd = new Int();
-      
-      // Verifica se a alocação foi bem-sucedida
-      if (!rangeStart || !rangeEnd) {
-        printf("Error: Failed to allocate memory for range\n");
-        exit(-1);
-      }
-      
-#ifdef WIN64
-      char* startStr = _strdup(rangeValues[0].c_str());
-      char* endStr = _strdup(rangeValues[1].c_str());
-#else
-      char* startStr = strdup(rangeValues[0].c_str());
-      char* endStr = strdup(rangeValues[1].c_str());
-#endif
-
-      // Verifica se a duplicação de string foi bem-sucedida
-      if (!startStr || !endStr) {
-        printf("Error: Failed to allocate memory for range strings\n");
-        exit(-1);
-      }
-      
-      rangeStart->SetBase16(startStr);
-      rangeEnd->SetBase16(endStr);
-      free(startStr);
-      free(endStr);
-      
-      // Verifica se o intervalo é válido
-      if (rangeStart->IsGreaterOrEqual(rangeEnd)) {
-        printf("Invalid range: start must be less than end\n");
-        exit(-1);
-      }
-      
-      a++;
-    } else if (strcmp(argv[a], "-keys") == 0) {
-      // Processa o parâmetro keys
-      a++;
-      if (a >= argc) {
-        printf("Error: -keys requires an argument\n");
-        exit(-1);
-      }
-      
-      // Tratamento seguro para conversão de string para uint64_t
-      char* endPtr;
-      keysPerCore = strtoull(argv[a], &endPtr, 10);
-      
-      // Verifica se a conversão foi bem-sucedida
-      if (*endPtr != '\0' || endPtr == argv[a]) {
-        printf("Invalid keys value: not a number\n");
-        exit(-1);
-      }
-      
-      if (keysPerCore == 0) {
-        printf("Invalid keys value: must be greater than 0\n");
-        exit(-1);
-      }
-      a++;
     } else if (strcmp(argv[a], "-check") == 0) {
 
       Int::Check();
@@ -648,28 +561,14 @@ int main(int argc, char* argv[]) {
   if(nbCPUThread<0)
     nbCPUThread = 0;
 
-  // Se um range foi especificado mas o número de chaves por core não foi, defina um valor padrão
-  if (rangeStart != NULL && rangeEnd != NULL && keysPerCore == 0) {
-    keysPerCore = STEP_SIZE;
-#ifdef WIN64
-    printf("Keys per core not specified, using default: %llu\n", keysPerCore);
-#else
-    printf("Keys per core not specified, using default: %lu\n", (unsigned long)keysPerCore);
-#endif
-  }
-
   // If a starting public key is specified, force the search mode according to the key
   if (!startPuKey.isZero()) {
     searchMode = (startPubKeyCompressed)?SEARCH_COMPRESSED:SEARCH_UNCOMPRESSED;
   }
 
   VanitySearch *v = new VanitySearch(secp, prefix, seed, searchMode, gpuEnable, stop, outputFile, sse,
-    maxFound, rekey, caseSensitive, startPuKey, paranoiacSeed, rangeStart, rangeEnd, keysPerCore);
+    maxFound, rekey, caseSensitive, startPuKey, paranoiacSeed);
   v->Search(nbCPUThread,gpuId,gridSize);
-
-  // Limpar a memória alocada
-  if (rangeStart) delete rangeStart;
-  if (rangeEnd) delete rangeEnd;
 
   return 0;
 }
