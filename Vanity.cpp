@@ -30,7 +30,11 @@
 #ifndef WIN64
 #include <pthread.h>
 #endif
+
+// O include de GPU/GPUGroup.h só deve ser incluído quando compilando com GPU
+#ifdef WITHGPU
 #include "GPU/GPUGroup.h"
+#endif
 
 using namespace std;
 
@@ -1571,21 +1575,28 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
     }
 
     if (ok) {
-      // Incrementar contador só quando usar todo o GRP_SIZE
-      counters[thId] += 6ULL * GRP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
-
       // Verificar se atingiu o número máximo de chaves por thread
-      if (useKeyRange && counters[thId] >= keysPerThread * nbThread) {
-        // Se atingiu o limite, sortear novas chaves iniciais
-        getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-        ok = g.SetKeys(p);
-        counters[thId] = 0;
-        printf("GPU Thread #%d: Reiniciando com novas chaves iniciais\n", thId);
-      } else {
-        // Incrementar as chaves para o próximo passo
-        for (int i = 0; i < nbThread; i++) {
-          keys[i].Add((uint64_t)GRP_SIZE);
+      if (useKeyRange) {
+        counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
+        
+        if (counters[thId] >= keysPerThread * nbThread) {
+          // Se atingiu o limite, sortear novas chaves iniciais
+          getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+          ok = g.SetKeys(p);
+          counters[thId] = 0;
+          printf("GPU Thread #%d: Reiniciando com novas chaves iniciais\n", thId);
+        } else {
+          // Incrementar as chaves para o próximo passo
+          for (int i = 0; i < nbThread; i++) {
+            keys[i].Add((uint64_t)STEP_SIZE);
+          }
         }
+      } else {
+        // Comportamento original
+        for (int i = 0; i < nbThread; i++) {
+          keys[i].Add((uint64_t)STEP_SIZE);
+        }
+        counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
       }
     }
   }
