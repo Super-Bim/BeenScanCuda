@@ -32,11 +32,6 @@
 #endif
 #include "GPU/GPUGroup.h"
 
-// Definição de fallback caso o include não funcione
-#ifndef GRP_SIZE
-#define GRP_SIZE 1024
-#endif
-
 using namespace std;
 
 Point Gn[CPU_GRP_SIZE / 2];
