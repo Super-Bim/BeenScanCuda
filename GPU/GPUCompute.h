@@ -413,7 +413,12 @@ __device__ void ComputeKeysP2SH(uint32_t mode, uint64_t *startx, uint64_t *start
     lookup32 = (uint32_t *)pattern;
   }
 
-  for (uint32_t j = 0; j < STEP_SIZE / GRP_SIZE; j++) {
+  // Número máximo de passos que este kernel vai executar
+  // Se j*GRP_SIZE >= maxStep (um valor definido pelo host), o kernel termina
+  uint32_t maxStepLimit = (uint32_t)((*out) >> 24);
+  uint32_t numSteps = maxStepLimit > 0 ? maxStepLimit : (STEP_SIZE / GRP_SIZE);
+
+  for (uint32_t j = 0; j < numSteps; j++) {
 
     // Fill group with delta x
     uint32_t i;
@@ -485,10 +490,6 @@ __device__ void ComputeKeysP2SH(uint32_t mode, uint64_t *startx, uint64_t *start
     ModSub256(px, _p2, px);
     ModSub256(px, Gx[i]);         // px = pow2(s) - p1.x - p2.x;
 
-    ModSub256(py,px , Gx[i]);
-    _ModMult(py, _s);             // py = s*(ret.x-p2.x)
-    ModSub256(py, Gy[i], py);     // py = - p2.y - s*(ret.x-p2.x);
-
     CHECK_PREFIX_P2SH(0);
 
     i++;
@@ -558,7 +559,12 @@ __device__ void ComputeKeysComp(uint64_t *startx, uint64_t *starty, prefix_t *sP
   Load256(px, sx);
   Load256(py, sy);
 
-  for (uint32_t j = 0; j < STEP_SIZE / GRP_SIZE; j++) {
+  // Número máximo de passos que este kernel vai executar
+  // Se j*GRP_SIZE >= maxStep (um valor definido pelo host), o kernel termina
+  uint32_t maxStepLimit = (uint32_t)((*out) >> 24);
+  uint32_t numSteps = maxStepLimit > 0 ? maxStepLimit : (STEP_SIZE / GRP_SIZE);
+
+  for (uint32_t j = 0; j < numSteps; j++) {
 
     // Fill group with delta x
     uint32_t i;

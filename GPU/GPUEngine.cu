@@ -465,14 +465,14 @@ bool GPUEngine::callKernel() {
   cudaMemset(outputPrefix,0,4);
 
   // Define o número máximo de passos para o kernel executar
-  uint32_t numSteps = (maxStep > 0 && maxStep < STEP_SIZE) ? 
-                      (uint32_t)(maxStep / GRP_SIZE) : STEP_SIZE / GRP_SIZE;
+  // Limitar a 1 passo por vez para melhor gerenciamento de memória
+  uint32_t numSteps = 1;
   
   // Armazena o número de passos nos 8 bits mais significativos do primeiro uint32_t do buffer de saída
   uint32_t initValue = numSteps << 24;
   cudaMemcpy(outputPrefix, &initValue, 4, cudaMemcpyHostToDevice);
 
-  // Call the kernel (Perform STEP_SIZE keys per thread)
+  // Call the kernel (Perform only 1 step per call to free memory between calls)
   if (searchType == P2SH) {
 
     if (hasPattern) {
@@ -511,6 +511,10 @@ bool GPUEngine::callKernel() {
     printf("GPUEngine: Kernel: %s\n", cudaGetErrorString(err));
     return false;
   }
+  
+  // Sincronizar após a chamada do kernel para garantir que todas as threads terminem
+  cudaDeviceSynchronize();
+  
   return true;
 
 }
