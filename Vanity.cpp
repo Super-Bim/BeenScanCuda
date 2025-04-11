@@ -1823,27 +1823,12 @@ void VanitySearch::getRangeGPUStartingKeys(int thId, int groupSize, int nbThread
   Int rangeSize;
   rangeSize.Set(&rangeEnd);
   rangeSize.Sub(&rangeStart);
-
-  // Usar timestamp como parte da semente aleatória
-  Timer::SleepMillis(thId + 1); // Pequeno atraso para garantir timestamps diferentes
   
   // Para cada thread, sorteia um ponto aleatório dentro do range
   for (int i = 0; i < nbThread; i++) {
-    // Gerar um número aleatório no range usando um método mais aleatório
+    // Usar o gerador de números aleatórios existente no Int
     Int randomOffset;
-    
-    // Usar tempo e posição como semente para aumentar a aleatoriedade
-    unsigned char entropy[32];
-    unsigned long long seed = (unsigned long long)time(NULL) + thId * 1000 + i;
-    
-    // Preencher o array de entropia com bytes pseudoaleatórios derivados do seed
-    for(int j = 0; j < 32; j++) {
-      seed = 6364136223846793005ULL * seed + 1;
-      entropy[j] = (unsigned char)(seed >> 56);
-    }
-    
-    // Converter para um Int usando SetInt8 que aceita bytes
-    randomOffset.SetInt8(entropy, 32);
+    randomOffset.Rand(rangeSize.GetBitLength());
     
     // Garantir que o offset esteja dentro do range
     randomOffset.Mod(&rangeSize);
