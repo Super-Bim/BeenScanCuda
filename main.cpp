@@ -38,7 +38,7 @@ void printUsage() {
   printf("             [-o outputfile] [-m maxFound] [-ps seed] [-s seed] [-t nbThread]\n");
   printf("             [-nosse] [-r rekey] [-check] [-kp] [-sp startPubKey]\n");
   printf("             [-rp privkey partialkeyfile] [-rangeStart hexKey] [-rangeEnd hexKey]\n");
-  printf("             [-keysPerThread keyCount] [prefix]\n\n");
+  printf("             [-keysPerThread keyCount] [-kt keyCount] [prefix]\n\n");
   printf(" prefix: prefix to search (Can contains wildcard '?' or '*')\n");
   printf(" -v: Print version\n");
   printf(" -u: Search uncompressed addresses\n");
@@ -545,9 +545,14 @@ int main(int argc, char* argv[]) {
       a++;
       rangeEnd = string(argv[a]);
       a++;
-    } else if (strcmp(argv[a], "-keysPerThread") == 0) {
-      a++;
-      keysPerThread = strtoull(argv[a], NULL, 10);
+    } else if (strcmp(argv[a], "-keysPerThread") == 0 || strcmp(argv[a], "-kt") == 0) {
+      if (a < argc - 1) {
+        uint64_t keys = std::stoull(string(argv[a + 1]));
+        if (keys > 0) {
+          keysPerThread = keys;
+        }
+        a++;
+      }
       a++;
     } else if (strcmp(argv[a], "-h") == 0) {
       printUsage();
