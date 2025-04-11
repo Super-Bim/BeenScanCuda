@@ -214,6 +214,7 @@ GPUEngine::GPUEngine(int nbThreadGroup, int nbThreadPerGroup, int gpuId, uint32_
   this->nbThread = nbThreadGroup * nbThreadPerGroup;
   this->maxFound = maxFound;
   this->outputSize = (maxFound*ITEM_SIZE + 4);
+  this->maxStep = 0; // Por padrão, sem limite
 
   char tmp[512];
   sprintf(tmp,"GPU #%d %s (%dx%d cores) Grid(%dx%d)",
@@ -462,6 +463,14 @@ bool GPUEngine::callKernel() {
 
   // Reset nbFound
   cudaMemset(outputPrefix,0,4);
+
+  // Define o número máximo de passos para o kernel executar
+  uint32_t numSteps = (maxStep > 0 && maxStep < STEP_SIZE) ? 
+                      (uint32_t)(maxStep / GRP_SIZE) : STEP_SIZE / GRP_SIZE;
+  
+  // Armazena o número de passos nos 8 bits mais significativos do primeiro uint32_t do buffer de saída
+  uint32_t initValue = numSteps << 24;
+  cudaMemcpy(outputPrefix, &initValue, 4, cudaMemcpyHostToDevice);
 
   // Call the kernel (Perform STEP_SIZE keys per thread)
   if (searchType == P2SH) {
@@ -844,6 +853,14 @@ bool GPUEngine::Check(Secp256K1 *secp) {
   delete[] p;
   return ok;
 
+}
+
+void GPUEngine::SetMaxStep(uint64_t maxStep) {
+  this->maxStep = maxStep;
+}
+
+uint64_t GPUEngine::GetMaxStep() {
+  return this->maxStep;
 }
 
 

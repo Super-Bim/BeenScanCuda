@@ -277,7 +277,12 @@ __device__ void ComputeKeys(uint32_t mode, uint64_t *startx, uint64_t *starty,
     lookup32 = (uint32_t *)pattern;
   }
 
-  for (uint32_t j = 0; j < STEP_SIZE / GRP_SIZE; j++) {
+  // Número máximo de passos que este kernel vai executar
+  // Se j*GRP_SIZE >= maxStep (um valor definido pelo host), o kernel termina
+  uint32_t maxStepLimit = (uint32_t)((*out) >> 24);
+  uint32_t numSteps = maxStepLimit > 0 ? maxStepLimit : (STEP_SIZE / GRP_SIZE);
+
+  for (uint32_t j = 0; j < numSteps; j++) {
 
     // Fill group with delta x
     uint32_t i;
