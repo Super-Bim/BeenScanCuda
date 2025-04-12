@@ -72,56 +72,38 @@ public:
 
   VanitySearch(Secp256K1 *secp, std::vector<std::string> &prefix, std::string seed, int searchMode,
                bool useGpu,bool stop,std::string outputFile, bool useSSE,uint32_t maxFound,uint64_t rekey,
-               bool caseSensitive,Point &startPubKey,bool paranoiacSeed);
+               bool caseSensitive,Point &startPubKey,bool paranoiacSeed, uint64_t rangeStart, uint64_t rangeEnd, uint64_t keysPerThread);
 
   void Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
   void FindKeyCPU(TH_PARAM *p);
   void FindKeyGPU(TH_PARAM *p);
-  void SetKeyRange(std::string start, std::string end);
-  uint64_t keysPerThread;
 
-  void SetPrefix(std::vector<std::string> &prefix);
+private:
+
   std::string GetHex(std::vector<unsigned char> &buffer);
+  std::string GetExpectedTime(double keyRate, double keyCount);
   bool checkPrivKey(std::string addr, Int &key, int32_t incr, int endomorphism, bool mode);
-  void checkAddresses(bool compressed, Int key, int i, Point p1);
-  void checkAddressesSSE(bool compressed, Int key, int i, Point p1, Point p2, Point p3, Point p4);
   void checkAddr(int prefIdx, uint8_t *hash160, Int &key, int32_t incr, int endomorphism, bool mode);
   void checkAddrSSE(uint8_t *h1, uint8_t *h2, uint8_t *h3, uint8_t *h4,
                     int32_t incr1, int32_t incr2, int32_t incr3, int32_t incr4,
                     Int &key, int endomorphism, bool mode);
+  void checkAddresses(bool compressed, Int key, int i, Point p1);
+  void checkAddressesSSE(bool compressed, Int key, int i, Point p1, Point p2, Point p3, Point p4);
   void output(std::string addr, std::string pAddr, std::string pAddrHex);
   bool isAlive(TH_PARAM *p);
-  std::string GetExpectedTime(double keyRate, double keyCount);
-  void getCPUStartingKey(int thId, Int& key, Point& startP);
-  void getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p);
-  void getRangeGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p);
-  void enumCaseUnsentivePrefix(std::string s, std::vector<std::string> &list);
   bool isSingularPrefix(std::string pref);
-  bool hasStartingBytes(int i, std::string &look);
-  double getDiffuclty();
-  void updateFound();
-  void getBoundaries(Int *tRangeStart, Int *tRangeEnd);
-  void setPrefix(Int *start, Int *end);
-
-private:
-
-  std::string GetTimeStr(double dTime);
-  bool isPrefix(std::vector<unsigned char> &pattern, std::vector<unsigned char> &hash);
-  bool MatchHash(uint32_t prefIdx, uint8_t *hash);
-  bool checkPrefixes(uint32_t prefIdx, uint8_t *hash160);
-  void checkPrivKeys(int thId, Int &key, int nbit, int nbit2, bool *ok);
-  void addPrefix(uint32_t prefH, uint32_t prefL, uint8_t *hash);
-  void updatePrefix();
-  void UpdatePrefixes();
-  void getCPUStartingKeys(Int & tRangeStart, Int & tRangeEnd, Int *keys, Point *p);
   bool hasStarted(TH_PARAM *p);
   void rekeyRequest(TH_PARAM *p);
   uint64_t getGPUCount();
   uint64_t getCPUCount();
   bool initPrefix(std::string &prefix, PREFIX_ITEM *it);
   void dumpPrefixes();
-  uint64_t lastRekey;
-  uint64_t rekey;
+  double getDiffuclty();
+  void updateFound();
+  void getCPUStartingKey(int thId, Int& key, Point& startP);
+  void getGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p);
+  void enumCaseUnsentivePrefix(std::string s, std::vector<std::string> &list);
+  bool prefixMatch(char *prefix, char *addr);
 
   Secp256K1 *secp;
   Int startKey;
@@ -139,13 +121,22 @@ private:
   int nbCPUThread;
   int nbGPUThread;
   int nbFoundKey;
-  uint64_t counters[256];
+  uint64_t rekey;
+  uint64_t lastRekey;
+  uint32_t nbPrefix;
+  std::string outputFile;
+  bool useSSE;
+  bool onlyFull;
+  uint32_t maxFound;
   double _difficulty;
   bool *patternFound;
   std::vector<PREFIX_TABLE_ITEM> prefixes;
   std::vector<prefix_t> usedPrefix;
   std::vector<LPREFIX> usedPrefixL;
   std::vector<std::string> &inputPrefixes;
+  uint64_t rangeStart;
+  uint64_t rangeEnd;
+  uint64_t keysPerThread;
 
   Int beta;
   Int lambda;
@@ -157,12 +148,6 @@ private:
 #else
   pthread_mutex_t  ghMutex;
 #endif
-
-  Int rangeStart;
-  Int rangeEnd;
-  bool useKeyRange;
-  Int rangeStart8;
-  Int rangeEnd8;
 
 };
 

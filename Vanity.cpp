@@ -12,11 +12,7 @@
 #include <algorithm>
 #ifndef WIN64
 #include <pthread.h>
-#ifdef __linux__
-#include <sys/resource.h>
 #endif
-#endif
-
 
 using namespace std;
 
@@ -25,9 +21,10 @@ Point _2Gn;
 
 // ----------------------------------------------------------------------------
 
-VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, string seed, int searchMode,
+VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,string seed,int searchMode,
                            bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,
-                           uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed)
+                           uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed,
+                           uint64_t rangeStart, uint64_t rangeEnd, uint64_t keysPerThread)
   :inputPrefixes(inputPrefixes) {
 
   this->secp = secp;
@@ -39,131 +36,14 @@ VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes, 
   this->nbGPUThread = 0;
   this->maxFound = maxFound;
   this->rekey = rekey;
-  this->searchType = P2PKH;
+  this->searchType = -1;
   this->startPubKey = startPubKey;
-  this->startPubKeySpecified = !startPubKey.isZero();
+  this->hasPattern = false;
   this->caseSensitive = caseSensitive;
-  this->keysPerThread = 500000000;
-  this->useKeyRange = false;
-
-  // Limitação de memória virtual em sistemas Linux para evitar segmentation fault
-  #ifndef WIN64
-  struct rlimit limit;
-  limit.rlim_cur = RLIM_INFINITY;
-  limit.rlim_max = RLIM_INFINITY;
-  setrlimit(RLIMIT_AS, &limit);  // Remover limitação de tamanho do espaço de endereçamento virtual
-  
-  setenv("CUDA_DEVICE_MAX_CONNECTIONS", "1", 1);  // Limitar número de conexões simultâneas
-  #endif
-
-  // --------------------------------------------------------
-
-  // Generate a random seed
-  if(paranoiacSeed)
-    seed = seed + Timer::getSeed(32);
-
-  // If the provided seed is a filename, use the file content as seed
-  if(fileExists(seed)) {
-    printf("Using file %s content as seed\n",seed.c_str());
-    seed = getFileContent(seed);
-  }
-
-  if(seed.length() < 4) {
-    printf("Warning, seed length is very short, this is not secure (length=%d)\n", (int)seed.length());
-  }
-
-  // Hash the seed
-  stringToLower(seed);
-  std::vector<unsigned char> seedBytes(seed.begin(), seed.end());
-  std::vector<unsigned char> hashBytes(64);
-  sha512(seedBytes.data(), (unsigned int)seedBytes.size(), hashBytes.data());
-  baseSeed.SetBytes(hashBytes.data(), 32);
-  //baseSeed.Rand(256);
-  int l = (baseSeed.GetBitLength() + 7) / 8;
-  printf("Base Key: Seed=%s (%d bit)\n", baseSeed.GetBase16().c_str(), baseSeed.GetBitLength());
-  if (l < 12) {
-    printf("Warning, entropy seems low (len<12), this is not recommended\n");
-  }
-  
-  // --------------------------------------------------------
-
-  // Set rangeStart and rangeEnd
-  rangeStart.SetInt32(0);
-  rangeEnd.SetInt32(0);
-  rangeStart8.SetInt32(0); // Inicialização de rangeStart8
-  rangeEnd8.SetInt32(0);   // Inicialização de rangeEnd8
-
-  // --------------------------------------------------------
-
-  // Check if the input prefix is a range
-  if (inputPrefixes.size() == 1 && inputPrefixes[0].length() >= 2) {
-    string pref = inputPrefixes[0];
-    if (pref[0] == '0' && pref[1] == 'x') {
-      string hexStart = pref.substr(2);
-      if (hexStart.length() >= 32) {
-        // Consider it's a hexadecimal range
-        useKeyRange = true;
-        if (hexStart.length() > 64) {
-          printf("Warning, range too long, truncating to 64 char\n");
-          hexStart = hexStart.substr(0, 64);
-        }
-        for (size_t i = 0; i < hexStart.length(); i++) {
-          if (!((hexStart[i] >= '0' && hexStart[i] <= '9') || (hexStart[i] >= 'A' && hexStart[i] <= 'F') || (hexStart[i] >= 'a' && hexStart[i] <= 'f'))) {
-            printf("Invalid hexadecimal specified for range\n");
-            exit(-1);
-          }
-        }
-        rangeStart.SetBase16((char *)hexStart.c_str());
-        rangeEnd.SetBase16((char *)hexStart.c_str());
-        rangeStart8.Set(&rangeStart); // Inicialização dos valores de range seguros 
-        rangeEnd8.Set(&rangeEnd);     // Inicialização dos valores de range seguros
-        if (rangeStart.IsGreaterOrEqual(&secp->order)) {
-          printf("Start range must be less than secp256k1 order\n");
-          exit(-1);
-        }
-        Int pow2;
-        Int sp(&rangeStart);
-        pow2.SetInt32(1);
-        pow2.ShiftL(4 * (64 - hexStart.length()));
-        if (searchMode == SEARCH_BOTH) {
-          printf("Warning, range mode can only search for un/compressed addresses, not both\n");
-          printf("         Setting search mode to compressed addresses only\n");
-          searchMode = SEARCH_COMPRESSED;
-        }
-        if (startPubKeySpecified) {
-          printf("Warning, range mode can only search from start key, start pubkey will be ignored\n");
-          startPubKeySpecified = false;
-        }
-        rangeEnd.Add(&pow2);
-        rangeEnd.Sub(1ULL);
-        rangeEnd8.Set(&rangeEnd); // Atualização do rangeEnd8
-        if (rangeEnd.IsGreaterOrEqual(&secp->order)) {
-          rangeEnd.Set(&secp->order);
-          rangeEnd.Sub(1ULL);
-          rangeEnd8.Set(&rangeEnd); // Atualização do rangeEnd8
-        }
-        printf("Range: 0x%s -> 0x%s\n", rangeStart.GetBase16().c_str(), rangeEnd.GetBase16().c_str());
-      }
-    }
-  }
-
-  // Inicializar valores relacionados ao range
-  if (useKeyRange) {
-    inputPrefixes.clear();
-  }
-
-  // --------------------------------------------------------
-
-  onlyFull = false;
-  hasPattern = false;
-  nbPrefix = 0;
-  std::vector<prefix_t> listPrefix;
-  std::vector<bool> compMode;
-  prefixes.clear();
-  usedPrefix.clear();
-  inputPrefixes.clear();
-
-  // ... existing code ...
+  this->startPubKeySpecified = !startPubKey.isZero();
+  this->rangeStart = rangeStart;
+  this->rangeEnd = rangeEnd;
+  this->keysPerThread = keysPerThread;
 
   lastRekey = 0;
   prefixes.clear();
@@ -1380,12 +1260,45 @@ void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
     off.ShiftL(64);
     key.Add(&off);
   }
+
+  // Apply range limits if specified
+  if (rangeStart > 0 || rangeEnd > 0) {
+    Int rangeWidth;
+    rangeWidth.Set(&secp->order);
+    
+    if (rangeEnd > 0) {
+      Int end;
+      end.SetInt64(rangeEnd);
+      rangeWidth.Set(&end);
+    }
+    
+    if (rangeStart > 0) {
+      Int start;
+      start.SetInt64(rangeStart);
+      if (rangeEnd > 0)
+        rangeWidth.Sub(&start);
+      key.Set(&start);
+    } else {
+      key.SetInt32(0);
+    }
+    
+    // Calculate thread offset within range
+    Int offset;
+    offset.SetInt64(thId);
+    offset.Mult(keysPerThread);
+    key.Add(&offset);
+    
+    // Make sure key is within range
+    if (!key.IsLowerOrEqual(&rangeWidth)) {
+      key.Set(&rangeWidth);
+    }
+  }
+
   Int km(&key);
   km.Add((uint64_t)CPU_GRP_SIZE / 2);
   startP = secp->ComputePublicKey(&km);
   if(startPubKeySpecified)
-   startP = secp->AddDirect(startP,startPubKey);
-
+    startP = secp->AddDirect(startP,startPubKey);
 }
 
 void VanitySearch::FindKeyCPU(TH_PARAM *ph) {
@@ -1591,17 +1504,54 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
     if (rekey > 0) {
       keys[i].Rand(256);
     } else {
-      keys[i].Set(&startKey);
-      Int offT((uint64_t)i);
-      offT.ShiftL(80);
-      Int offG((uint64_t)thId);
-      offG.ShiftL(112);
-      keys[i].Add(&offT);
-      keys[i].Add(&offG);
+      Int pk(&startKey);
+      Int offset;
+      offset.SetInt64(thId);
+      offset.ShiftL(64);
+      pk.Add(&offset);
+      offset.SetInt64(i);
+      offset.ShiftL(32);
+      pk.Add(&offset);
+      keys[i].Set(&pk);
     }
+
+    // Apply range limits if specified
+    if (rangeStart > 0 || rangeEnd > 0) {
+      Int rangeWidth;
+      rangeWidth.Set(&secp->order);
+      
+      if (rangeEnd > 0) {
+        Int end;
+        end.SetInt64(rangeEnd);
+        rangeWidth.Set(&end);
+      }
+      
+      if (rangeStart > 0) {
+        Int start;
+        start.SetInt64(rangeStart);
+        if (rangeEnd > 0)
+          rangeWidth.Sub(&start);
+        keys[i].Set(&start);
+      } else {
+        keys[i].SetInt32(0);
+      }
+      
+      // Calculate thread offset within range
+      Int offset;
+      offset.SetInt64(thId * nbThread + i);
+      offset.Mult(keysPerThread);
+      keys[i].Add(&offset);
+      
+      // Make sure key is within range
+      if (!keys[i].IsLowerOrEqual(&rangeWidth)) {
+        keys[i].Set(&rangeWidth);
+      }
+    }
+
+    // Compute starting point
     Int k(keys + i);
-    // Starting key is at the middle of the group
-    k.Add((uint64_t)(groupSize / 2));
+    // Add the starting offset to the key
+    k.Add((uint64_t)groupSize / 2);
     p[i] = secp->ComputePublicKey(&k);
     if (startPubKeySpecified)
       p[i] = secp->AddDirect(p[i], startPubKey);
@@ -1627,15 +1577,7 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
 
   counters[thId] = 0;
 
-  // Configurar o número máximo de chaves para modo range
-  if (useKeyRange) {
-    // Configurar limite diretamente no GPUEngine usando keysPerThread
-    // A função SetMaxStep vai cuidar da comunicação correta com o kernel
-    g.SetMaxStep(keysPerThread);
-    getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-  } else {
-    getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-  }
+  getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
 
   g.SetSearchMode(searchMode);
   g.SetSearchType(searchType);
@@ -1648,140 +1590,40 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
       g.SetPrefix(usedPrefix);
   }
 
+  getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
   ok = g.SetKeys(p);
   ph->rekeyRequest = false;
 
   ph->hasStarted = true;
 
-  // Contador de erros consecutivos para recuperação
-  int consecutiveErrors = 0;
-  uint64_t lastCounter = 0;
-
   // GPU Thread
   while (ok && !endOfSearch) {
-    try {
-      if (ph->rekeyRequest) {
-        if (useKeyRange) {
-          getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-        } else {
-          getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-        }
-        ok = g.SetKeys(p);
-        ph->rekeyRequest = false;
-      }
 
-      // Call kernel
-      ok = g.Launch(found);
-
-      if (!ok) {
-        // Tentar recuperar de erros
-        consecutiveErrors++;
-        printf("GPU Thread #%d: Erro no kernel, tentativa %d de recuperação\n", thId, consecutiveErrors);
-        
-        // Em caso de múltiplos erros consecutivos, resetar com novas chaves
-        if (consecutiveErrors > 3) {
-          // Gerenciar memória em sistemas Linux
-          #ifndef _WIN64
-          #ifdef __linux__
-          g.ManageLinuxMemory();
-          #endif
-          #endif
-          
-          // Aguardar para estabilização
-          Timer::SleepMillis(1000 * consecutiveErrors);
-          
-          if (useKeyRange) {
-            getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-          } else {
-            getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-          }
-          
-          g.SetSearchMode(searchMode);
-          g.SetSearchType(searchType);
-          if (onlyFull) {
-            g.SetPrefix(usedPrefixL,nbPrefix);
-          } else {
-            if(hasPattern)
-              g.SetPattern(inputPrefixes[0].c_str());
-            else
-              g.SetPrefix(usedPrefix);
-          }
-          
-          ok = g.SetKeys(p);
-        }
-        continue;
-      }
-      
-      // Reset contador de erros quando operação bem-sucedida
-      consecutiveErrors = 0;
-
-      // Process found items
-      for(int i=0;i<(int)found.size() && !endOfSearch;i++) {
-        ITEM it = found[i];
-        checkAddr(*(prefix_t *)(it.hash), it.hash, keys[it.thId], it.incr, it.endo, it.mode);
-      }
-
-      // Update keys
-      if (ok) {
-        if (useKeyRange) {
-          counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
-          
-          // Verificar overflow
-          if (counters[thId] < lastCounter) {
-            counters[thId] = 0;
-            lastCounter = 0;
-          } else {
-            lastCounter = counters[thId];
-          }
-          
-          // Se atingiu o limite, sortear novas chaves
-          if (counters[thId] >= keysPerThread * nbThread) {
-            // Gerenciar memória em sistemas Linux
-            #ifndef _WIN64
-            #ifdef __linux__
-            g.ManageLinuxMemory();
-            #endif
-            #endif
-            
-            // Reiniciar contadores e gerar novas chaves
-            printf("GPU Thread #%d: Limite de chaves atingido (%.0f), gerando novas chaves\n", 
-                  thId, (double)keysPerThread * nbThread);
-            getRangeGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
-            ok = g.SetKeys(p);
-            counters[thId] = 0;
-            lastCounter = 0;
-          } else {
-            // Avançar chaves normalmente
-            for (int i = 0; i < nbThread; i++) {
-              keys[i].Add((uint64_t)STEP_SIZE);
-            }
-          }
-        } else {
-          // Comportamento padrão
-          for (int i = 0; i < nbThread; i++) {
-            keys[i].Add((uint64_t)STEP_SIZE);
-          }
-          counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
-        }
-      }
-    } catch (...) {
-      // Recuperar de exceções não tratadas
-      printf("GPU Thread #%d: Exceção detectada, tentando recuperar\n", thId);
-      consecutiveErrors++;
-      
-      // Gerenciar memória em sistemas Linux
-      #ifndef _WIN64
-      #ifdef __linux__
-      g.ManageLinuxMemory();
-      #endif
-      #endif
-      
-      Timer::SleepMillis(500);
-      continue;
+    if (ph->rekeyRequest) {
+      getGPUStartingKeys(thId, g.GetGroupSize(), nbThread, keys, p);
+      ok = g.SetKeys(p);
+      ph->rekeyRequest = false;
     }
+
+    // Call kernel
+    ok = g.Launch(found);
+
+    for(int i=0;i<(int)found.size() && !endOfSearch;i++) {
+
+      ITEM it = found[i];
+      checkAddr(*(prefix_t *)(it.hash), it.hash, keys[it.thId], it.incr, it.endo, it.mode);
+
+    }
+
+    if (ok) {
+      for (int i = 0; i < nbThread; i++) {
+        keys[i].Add((uint64_t)STEP_SIZE);
+      }
+      counters[thId] += 6ULL * STEP_SIZE * nbThread; // Point +  endo1 + endo2 + symetrics
+    }
+
   }
 
-  // Liberar memória ao finalizar
   delete[] keys;
   delete[] p;
 
@@ -1791,6 +1633,7 @@ void VanitySearch::FindKeyGPU(TH_PARAM *ph) {
 #endif
 
   ph->isRunning = false;
+
 }
 
 // ----------------------------------------------------------------------------
@@ -1997,136 +1840,4 @@ string VanitySearch::GetHex(vector<unsigned char> &buffer) {
 
   return ret;
 
-}
-
-void VanitySearch::SetKeyRange(std::string start, std::string end) {
-  
-  // Verificar se as strings estão no formato hexadecimal
-  for (size_t i = 0; i < start.length(); i++) {
-    if (!((start[i] >= '0' && start[i] <= '9') || (start[i] >= 'A' && start[i] <= 'F') || (start[i] >= 'a' && start[i] <= 'f'))) {
-      printf("Invalid hexadecimal specified for rangeStart\n");
-      exit(-1);
-    }
-  }
-  
-  for (size_t i = 0; i < end.length(); i++) {
-    if (!((end[i] >= '0' && end[i] <= '9') || (end[i] >= 'A' && end[i] <= 'F') || (end[i] >= 'a' && end[i] <= 'f'))) {
-      printf("Invalid hexadecimal specified for rangeEnd\n");
-      exit(-1);
-    }
-  }
-  
-  // Converter para Int
-  rangeStart.SetBase16(start.c_str());
-  rangeEnd.SetBase16(end.c_str());
-  
-  // Atualizar também as variáveis seguras de range
-  rangeStart8.Set(&rangeStart);
-  rangeEnd8.Set(&rangeEnd);
-  
-  // Verificar o range
-  if (rangeStart.IsGreaterOrEqual(&rangeEnd)) {
-    printf("Error: Invalid range (rangeStart >= rangeEnd)\n");
-    exit(-1);
-  }
-  
-  if (rangeStart.IsGreaterOrEqual(&secp->order)) {
-    printf("Error: rangeStart is greater than secp256k1 order\n");
-    exit(-1);
-  }
-  
-  if (rangeEnd.IsGreaterOrEqual(&secp->order)) {
-    printf("Warning: rangeEnd is greater than secp256k1 order, adjusting...\n");
-    rangeEnd.Set(&secp->order);
-    rangeEnd.Sub(1ULL);
-    rangeEnd8.Set(&rangeEnd);
-  }
-  
-  useKeyRange = true;
-  
-  if (searchMode == SEARCH_BOTH) {
-    printf("Warning, range mode can only search for un/compressed addresses, not both\n");
-    printf("         Setting search mode to compressed addresses only\n");
-    searchMode = SEARCH_COMPRESSED;
-  }
-  
-  if (startPubKeySpecified) {
-    printf("Warning, range mode can only search from start key, start pubkey will be ignored\n");
-    startPubKeySpecified = false;
-  }
-  
-  printf("Range: 0x%s -> 0x%s\n", rangeStart.GetBase16().c_str(), rangeEnd.GetBase16().c_str());
-}
-
-void VanitySearch::getRangeGPUStartingKeys(int thId, int groupSize, int nbThread, Int *keys, Point *p) {
-
-  // Calcula o tamanho do range
-  Int rangeSize;
-  rangeSize.Set(&rangeEnd);
-  rangeSize.Sub(&rangeStart);
-  
-  // Para cada thread, sorteia um ponto aleatório dentro do range
-  for (int i = 0; i < nbThread; i++) {
-    // Usar o gerador de números aleatórios existente no Int
-    Int randomOffset;
-    randomOffset.Rand(rangeSize.GetBitLength());
-    
-    // Garantir que o offset esteja dentro do range
-    randomOffset.Mod(&rangeSize);
-
-    // Definir a chave como rangeStart + offset aleatório
-    keys[i].Set(&rangeStart);
-    keys[i].Add(&randomOffset);
-
-    // Verificar se a chave está dentro do intervalo permitido
-    if (keys[i].IsGreaterOrEqual(&secp->order) || keys[i].IsNegative() || keys[i].IsZero()) {
-      printf("Thread %d: Chave inválida, reiniciando...\n", thId);
-      keys[i].Set(&rangeStart);
-      keys[i].AddOne();
-      keys[i].Mult((uint64_t)(i+1));
-    }
-
-    // Starting key is at the middle of the group
-    Int k(keys + i);
-    k.Add((uint64_t)(groupSize / 2));
-    
-    try {
-      // Computar a chave pública
-      p[i] = secp->ComputePublicKey(&k);
-      
-      // Adicionar startPubKey se especificado
-      if (startPubKeySpecified)
-        p[i] = secp->AddDirect(p[i], startPubKey);
-    } catch (...) {
-      // Em caso de exceção durante o cálculo da chave pública
-      printf("Thread %d: Exceção no cálculo da chave pública, reiniciando...\n", thId);
-      keys[i].Set(&rangeStart);
-      keys[i].AddOne();
-      k.Set(&keys[i]);
-      k.Add((uint64_t)(groupSize / 2));
-      p[i] = secp->ComputePublicKey(&k);
-    }
-  }
-
-#ifndef _WIN64
-  // Em sistemas Linux, sincronizar para evitar segmentation fault
-  #ifdef __linux__
-  // Liberar recursos do sistema operacional para evitar segmentation fault
-  sched_yield();
-  #endif
-#endif
-
-}
-
-// ----------------------------------------------------------------------------
-
-// Funções para gerenciamento seguro de ranges de chaves
-void VanitySearch::getBoundaries(Int *tRangeStart, Int *tRangeEnd) {
-  tRangeStart->Set(&rangeStart8);
-  tRangeEnd->Set(&rangeEnd8);
-}
-
-void VanitySearch::setPrefix(Int *start, Int *end) {
-  rangeStart8.Set(start);
-  rangeEnd8.Set(end);
 }
