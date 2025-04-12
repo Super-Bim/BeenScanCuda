@@ -1,4 +1,3 @@
-
 #ifndef VANITYH
 #define VANITYH
 

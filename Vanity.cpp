@@ -21,11 +21,11 @@ Point _2Gn;
 
 // ----------------------------------------------------------------------------
 
-VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,string seed,int searchMode,
+VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &prefix,string seed,int searchMode,
                            bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,
                            uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed,
                            uint32_t rangeStart, uint32_t rangeEnd, uint32_t keysPerThread)
-  :inputPrefixes(inputPrefixes) {
+  :inputPrefixes(prefix) {
 
   this->secp = secp;
   this->searchMode = searchMode;
