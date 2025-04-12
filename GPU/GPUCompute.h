@@ -277,19 +277,7 @@ __device__ void ComputeKeys(uint32_t mode, uint64_t *startx, uint64_t *starty,
     lookup32 = (uint32_t *)pattern;
   }
 
-  // Número máximo de passos que este kernel vai executar
-  // Obtém diretamente o limite de passos, sem usar bits do buffer de saída
-  uint32_t numSteps = STEP_SIZE / GRP_SIZE;
-  
-  // Se um limite foi definido pelo host (maxStep > 0), calcular o número de passos
-  if (maxFound > 0x1000000) { // Use os 8 bits mais significativos para armazenar informações de limite
-    uint32_t maxStepLimit = (maxFound >> 24);
-    if (maxStepLimit > 0) {
-      numSteps = min(numSteps, maxStepLimit);
-    }
-  }
-
-  for (uint32_t j = 0; j < numSteps; j++) {
+  for (uint32_t j = 0; j < STEP_SIZE / GRP_SIZE; j++) {
 
     // Fill group with delta x
     uint32_t i;
@@ -420,19 +408,7 @@ __device__ void ComputeKeysP2SH(uint32_t mode, uint64_t *startx, uint64_t *start
     lookup32 = (uint32_t *)pattern;
   }
 
-  // Número máximo de passos que este kernel vai executar
-  // Obtém diretamente o limite de passos, sem usar bits do buffer de saída
-  uint32_t numSteps = STEP_SIZE / GRP_SIZE;
-  
-  // Se um limite foi definido pelo host (maxStep > 0), calcular o número de passos
-  if (maxFound > 0x1000000) { // Use os 8 bits mais significativos para armazenar informações de limite
-    uint32_t maxStepLimit = (maxFound >> 24);
-    if (maxStepLimit > 0) {
-      numSteps = min(numSteps, maxStepLimit);
-    }
-  }
-
-  for (uint32_t j = 0; j < numSteps; j++) {
+  for (uint32_t j = 0; j < STEP_SIZE / GRP_SIZE; j++) {
 
     // Fill group with delta x
     uint32_t i;
@@ -504,6 +480,10 @@ __device__ void ComputeKeysP2SH(uint32_t mode, uint64_t *startx, uint64_t *start
     ModSub256(px, _p2, px);
     ModSub256(px, Gx[i]);         // px = pow2(s) - p1.x - p2.x;
 
+    ModSub256(py,px , Gx[i]);
+    _ModMult(py, _s);             // py = s*(ret.x-p2.x)
+    ModSub256(py, Gy[i], py);     // py = - p2.y - s*(ret.x-p2.x);
+
     CHECK_PREFIX_P2SH(0);
 
     i++;
@@ -573,19 +553,7 @@ __device__ void ComputeKeysComp(uint64_t *startx, uint64_t *starty, prefix_t *sP
   Load256(px, sx);
   Load256(py, sy);
 
-  // Número máximo de passos que este kernel vai executar
-  // Obtém diretamente o limite de passos, sem usar bits do buffer de saída
-  uint32_t numSteps = STEP_SIZE / GRP_SIZE;
-  
-  // Se um limite foi definido pelo host (maxStep > 0), calcular o número de passos
-  if (maxFound > 0x1000000) { // Use os 8 bits mais significativos para armazenar informações de limite
-    uint32_t maxStepLimit = (maxFound >> 24);
-    if (maxStepLimit > 0) {
-      numSteps = min(numSteps, maxStepLimit);
-    }
-  }
-
-  for (uint32_t j = 0; j < numSteps; j++) {
+  for (uint32_t j = 0; j < STEP_SIZE / GRP_SIZE; j++) {
 
     // Fill group with delta x
     uint32_t i;

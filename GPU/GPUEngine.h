@@ -67,9 +67,6 @@ public:
   bool Launch(std::vector<ITEM> &prefixFound,bool spinWait=false);
   int GetNbThread();
   int GetGroupSize();
-  void SetMaxStep(uint64_t maxStep);
-  uint64_t GetMaxStep();
-  bool ManageLinuxMemory();
 
   bool Check(Secp256K1 *secp);
   std::string deviceName;
@@ -104,7 +101,6 @@ private:
   uint32_t outputSize;
   std::string pattern;
   bool hasPattern;
-  uint64_t maxStep;  // Quantidade máxima de chaves a serem verificadas por thread
 
 };
 
