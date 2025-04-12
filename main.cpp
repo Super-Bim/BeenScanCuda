@@ -402,9 +402,9 @@ int main(int argc, char* argv[]) {
   bool startPubKeyCompressed;
   bool caseSensitive = true;
   bool paranoiacSeed = false;
-  uint64_t rangeStart = 0;
-  uint64_t rangeEnd = 0;
-  uint64_t keysPerThread = 50000000;
+  uint32_t rangeStart = 0;
+  uint32_t rangeEnd = 0;
+  uint32_t keysPerThread = 50000000;
 
   while (a < argc) {
 

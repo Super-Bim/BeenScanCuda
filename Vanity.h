@@ -1,19 +1,3 @@
-/*
- * This file is part of the VanitySearch distribution (https://github.com/JeanLucPons/VanitySearch).
- * Copyright (c) 2019 Jean Luc PONS.
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 3.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
- * General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program. If not, see <http://www.gnu.org/licenses/>.
-*/
 
 #ifndef VANITYH
 #define VANITYH
@@ -72,7 +56,7 @@ public:
 
   VanitySearch(Secp256K1 *secp, std::vector<std::string> &prefix, std::string seed, int searchMode,
                bool useGpu,bool stop,std::string outputFile, bool useSSE,uint32_t maxFound,uint64_t rekey,
-               bool caseSensitive,Point &startPubKey,bool paranoiacSeed, uint64_t rangeStart, uint64_t rangeEnd, uint64_t keysPerThread);
+               bool caseSensitive,Point &startPubKey,bool paranoiacSeed, uint32_t rangeStart, uint32_t rangeEnd, uint32_t keysPerThread);
 
   void Search(int nbThread,std::vector<int> gpuId,std::vector<int> gridSize);
   void FindKeyCPU(TH_PARAM *p);
@@ -134,9 +118,9 @@ private:
   std::vector<prefix_t> usedPrefix;
   std::vector<LPREFIX> usedPrefixL;
   std::vector<std::string> &inputPrefixes;
-  uint64_t rangeStart;
-  uint64_t rangeEnd;
-  uint64_t keysPerThread;
+  uint32_t rangeStart;
+  uint32_t rangeEnd;
+  uint32_t keysPerThread;
 
   Int beta;
   Int lambda;

@@ -24,7 +24,7 @@ Point _2Gn;
 VanitySearch::VanitySearch(Secp256K1 *secp, vector<std::string> &inputPrefixes,string seed,int searchMode,
                            bool useGpu, bool stop, string outputFile, bool useSSE, uint32_t maxFound,
                            uint64_t rekey, bool caseSensitive, Point &startPubKey, bool paranoiacSeed,
-                           uint64_t rangeStart, uint64_t rangeEnd, uint64_t keysPerThread)
+                           uint32_t rangeStart, uint32_t rangeEnd, uint32_t keysPerThread)
   :inputPrefixes(inputPrefixes) {
 
   this->secp = secp;
@@ -1268,13 +1268,13 @@ void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
     
     if (rangeEnd > 0) {
       Int end;
-      end.SetInt64(rangeEnd);
+      end.SetInt32((uint32_t)rangeEnd);
       rangeWidth.Set(&end);
     }
     
     if (rangeStart > 0) {
       Int start;
-      start.SetInt64(rangeStart);
+      start.SetInt32((uint32_t)rangeStart);
       if (rangeEnd > 0)
         rangeWidth.Sub(&start);
       key.Set(&start);
@@ -1284,7 +1284,7 @@ void VanitySearch::getCPUStartingKey(int thId,Int& key,Point& startP) {
     
     // Calculate thread offset within range
     Int offset;
-    offset.SetInt64(thId);
+    offset.SetInt32(thId);
     offset.Mult(keysPerThread);
     key.Add(&offset);
     
@@ -1506,10 +1506,10 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
     } else {
       Int pk(&startKey);
       Int offset;
-      offset.SetInt64(thId);
+      offset.SetInt32(thId);
       offset.ShiftL(64);
       pk.Add(&offset);
-      offset.SetInt64(i);
+      offset.SetInt32(i);
       offset.ShiftL(32);
       pk.Add(&offset);
       keys[i].Set(&pk);
@@ -1522,13 +1522,13 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
       
       if (rangeEnd > 0) {
         Int end;
-        end.SetInt64(rangeEnd);
+        end.SetInt32((uint32_t)rangeEnd);
         rangeWidth.Set(&end);
       }
       
       if (rangeStart > 0) {
         Int start;
-        start.SetInt64(rangeStart);
+        start.SetInt32((uint32_t)rangeStart);
         if (rangeEnd > 0)
           rangeWidth.Sub(&start);
         keys[i].Set(&start);
@@ -1538,7 +1538,7 @@ void VanitySearch::getGPUStartingKeys(int thId, int groupSize, int nbThread, Int
       
       // Calculate thread offset within range
       Int offset;
-      offset.SetInt64(thId * nbThread + i);
+      offset.SetInt32(thId * nbThread + i);
       offset.Mult(keysPerThread);
       keys[i].Add(&offset);
       
