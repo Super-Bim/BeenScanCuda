@@ -159,6 +159,11 @@ int _ConvertSMVer2Cores(int major, int minor) {
       {0x87, 128},
       {0x89, 128},
       {0x90, 128},
+      {0x91, 128}, // Adicionar arquiteturas Hopper (A100, H100)
+      {0x92, 128}, // Adicionar arquiteturas Hopper adicionais
+      {0x93, 128}, // Adicionar arquiteturas Ampere adicionais
+      {0x94, 128}, // Adicionar arquiteturas Lovelace (RTX 4000 series)
+      {0x95, 128}, // Adicionar arquiteturas Lovelace adicionais
       {-1, -1} };
 
   int index = 0;
@@ -170,6 +175,10 @@ int _ConvertSMVer2Cores(int major, int minor) {
 
     index++;
   }
+
+  // Se não encontrar, retornar um valor padrão para arquiteturas mais recentes
+  if (major >= 9)
+    return 128;
 
   return 0;
 
